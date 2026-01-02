@@ -1,0 +1,1133 @@
+<!--
+DarmKur Tagebuch — Single-File PWA-ähnliche Web-App (ohne Build-Tools)
+How to run:
+- Öffnen: Doppelklick auf diese Datei reicht (ohne Service Worker).
+- Für “Installieren”/Offline (optional): über einen lokalen HTTP-Server öffnen (z.B. `python3 -m http.server 8080`)
+  und dann in der App “Service Worker exportieren” nutzen (sw.js herunterladen und im gleichen Ordner ablegen).
+- Hinweis: Ohne Service Worker sind CDN-Ressourcen (Chart.js) ggf. nicht offline verfügbar.
+-->
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>DarmKur Tagebuch</title>
+
+  <!-- Chart.js (CDN, kostenlos) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+
+  <style>
+    :root{
+      --bg: #0b1220;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.10);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.68);
+      --faint: rgba(255,255,255,0.45);
+      --border: rgba(255,255,255,0.14);
+      --shadow: 0 12px 30px rgba(0,0,0,0.35);
+      --accent: #5dd6c6;
+      --accent2:#7aa2ff;
+      --danger:#ff5b6e;
+      --warn:#ffcc66;
+      --ok:#44d18b;
+      --radius: 18px;
+      --radius2: 14px;
+      --focus: 0 0 0 3px rgba(93,214,198,0.25);
+      --font: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    @media (prefers-color-scheme: light) {
+      :root{
+        --bg:#f7fafc;
+        --panel: rgba(15,23,42,0.05);
+        --panel2: rgba(15,23,42,0.08);
+        --text: rgba(15,23,42,0.92);
+        --muted: rgba(15,23,42,0.68);
+        --faint: rgba(15,23,42,0.45);
+        --border: rgba(15,23,42,0.14);
+        --shadow: 0 12px 30px rgba(2,6,23,0.10);
+        --accent:#0ea5e9;
+        --accent2:#10b981;
+        --danger:#e11d48;
+        --warn:#f59e0b;
+        --ok:#16a34a;
+        --focus: 0 0 0 3px rgba(14,165,233,0.20);
+      }
+      meta[name="theme-color"]{ content: #f7fafc; }
+    }
+    html[data-theme="dark"]{
+      --bg: #0b1220;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.10);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.68);
+      --faint: rgba(255,255,255,0.45);
+      --border: rgba(255,255,255,0.14);
+      --shadow: 0 12px 30px rgba(0,0,0,0.35);
+      --accent: #5dd6c6;
+      --accent2:#7aa2ff;
+      --danger:#ff5b6e;
+      --warn:#ffcc66;
+      --ok:#44d18b;
+      --focus: 0 0 0 3px rgba(93,214,198,0.25);
+    }
+    html[data-theme="light"]{
+      --bg:#f7fafc;
+      --panel: rgba(15,23,42,0.05);
+      --panel2: rgba(15,23,42,0.08);
+      --text: rgba(15,23,42,0.92);
+      --muted: rgba(15,23,42,0.68);
+      --faint: rgba(15,23,42,0.45);
+      --border: rgba(15,23,42,0.14);
+      --shadow: 0 12px 30px rgba(2,6,23,0.10);
+      --accent:#0ea5e9;
+      --accent2:#10b981;
+      --danger:#e11d48;
+      --warn:#f59e0b;
+      --ok:#16a34a;
+      --focus: 0 0 0 3px rgba(14,165,233,0.20);
+    }
+
+    *{ box-sizing: border-box; }
+    body{
+      margin:0;
+      font-family: var(--font);
+      background: radial-gradient(1200px 800px at 30% 0%, rgba(125,211,252,0.14), transparent 60%),
+                  radial-gradient(1000px 700px at 85% 10%, rgba(74,222,128,0.10), transparent 55%),
+                  radial-gradient(1000px 700px at 60% 90%, rgba(167,139,250,0.10), transparent 60%),
+                  var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    a{ color:inherit; }
+    .app{
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 18px 16px 98px;
+    }
+
+    .topbar{
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.22), rgba(0,0,0,0.0));
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 12px 0 10px;
+      margin: -18px -16px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.00);
+    }
+    .topbar-inner{
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 16px;
+      display:flex;
+      align-items:center;
+      gap: 12px;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .logo{
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(93,214,198,0.95), rgba(122,162,255,0.85));
+      box-shadow: var(--shadow);
+      display:grid;
+      place-items:center;
+      flex: 0 0 auto;
+    }
+    .logo svg{ width: 26px; height: 26px; opacity: 0.95; }
+    .titlewrap{
+      min-width: 0;
+    }
+    .apptitle{
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin:0;
+      line-height: 1.05;
+      font-size: 18px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .subtitle{
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .spacer{ flex: 1 1 auto; }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+      user-select:none;
+    }
+    .pill small{ color: var(--muted); }
+    .pill b{ font-weight: 750; }
+
+    .btn{
+      appearance:none;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 12px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      display:inline-flex;
+      align-items:center;
+      gap: 10px;
+      min-height: 44px;
+      transition: transform .06s ease, background .15s ease, border-color .15s ease;
+      user-select:none;
+      touch-action: manipulation;
+    }
+    .btn:hover{ background: var(--panel2); }
+    .btn:active{ transform: translateY(1px); }
+    .btn:focus-visible{ outline:none; box-shadow: var(--focus); }
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(93,214,198,0.28), rgba(122,162,255,0.22));
+      border-color: rgba(93,214,198,0.35);
+    }
+    .btn.danger{
+      background: linear-gradient(135deg, rgba(255,91,110,0.18), rgba(255,204,102,0.08));
+      border-color: rgba(255,91,110,0.35);
+    }
+    .btn.ghost{
+      background: transparent;
+      border-color: rgba(255,255,255,0.18);
+    }
+    .btn.icon{
+      padding: 10px 12px;
+    }
+    .btn svg{ width: 18px; height: 18px; opacity: 0.9; }
+
+    .grid{
+      display:grid;
+      gap: 14px;
+    }
+    .grid.two{
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 920px){
+      .grid.two{ grid-template-columns: 1.15fr 0.85fr; }
+    }
+
+    .card{
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card .hd{
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .card .hd h2{
+      margin:0;
+      font-size: 14px;
+      letter-spacing: -0.01em;
+      font-weight: 800;
+    }
+    .card .hd p{
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .card .bd{ padding: 14px; }
+
+    .weeks{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 10px;
+    }
+    @media (min-width: 520px){
+      .weeks{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+    }
+    @media (min-width: 820px){
+      .weeks{ grid-template-columns: repeat(4, minmax(0,1fr)); }
+    }
+    .weekTile{
+      border-radius: var(--radius2);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      padding: 12px 12px 10px;
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+      cursor:pointer;
+      min-height: 92px;
+      touch-action: manipulation;
+      transition: transform .06s ease, background .15s ease;
+    }
+    .weekTile:hover{ background: rgba(255,255,255,0.10); }
+    .weekTile:active{ transform: translateY(1px); }
+    .weekTop{ display:flex; align-items:center; justify-content: space-between; gap:10px; }
+    .weekName{ font-weight: 850; letter-spacing: -0.02em; }
+    .weekMeta{ color: var(--muted); font-size: 12px; }
+    .badge{
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .badge.ok{ color: rgba(68,209,139,0.95); border-color: rgba(68,209,139,0.35); background: rgba(68,209,139,0.10); }
+    .badge.warn{ color: rgba(255,204,102,0.95); border-color: rgba(255,204,102,0.35); background: rgba(255,204,102,0.10); }
+    .badge.empty{ color: var(--muted); }
+    .prog{
+      height: 8px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 999px;
+      overflow:hidden;
+    }
+    .prog > div{
+      height:100%;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(93,214,198,0.85), rgba(122,162,255,0.85));
+      border-radius: 999px;
+    }
+
+    .hint{
+      padding: 12px 14px;
+      border-radius: var(--radius2);
+      background: linear-gradient(135deg, rgba(93,214,198,0.12), rgba(122,162,255,0.08));
+      border: 1px solid rgba(93,214,198,0.26);
+      color: var(--text);
+      font-size: 12.5px;
+      line-height: 1.4;
+    }
+    .hint b{ font-weight: 800; }
+    .hint .mini{
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .sectionTitle{
+      display:flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 0 0 10px;
+    }
+    .sectionTitle h3{
+      margin: 0;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: -0.01em;
+    }
+    .sectionTitle small{
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .q{
+      padding: 12px;
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      margin-bottom: 10px;
+    }
+    .q:last-child{ margin-bottom: 0; }
+    .qHd{
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .qLabel{
+      font-weight: 850;
+      letter-spacing: -0.01em;
+      font-size: 13.5px;
+      line-height: 1.2;
+      margin:0;
+    }
+    .qHelp{
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .qRight{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .valPill{
+      min-width: 48px;
+      text-align:center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.08);
+      font-weight: 850;
+      letter-spacing: -0.01em;
+      font-variant-numeric: tabular-nums;
+    }
+    .valPill.empty{
+      color: var(--muted);
+      font-weight: 750;
+    }
+    .sliderRow{
+      display:flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    input[type="range"]{
+      width: 100%;
+      height: 44px; /* touch target */
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"]:focus-visible{ outline:none; box-shadow: var(--focus); border-radius: 10px; }
+    .scaleLabels{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--faint);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .scaleLabels span{
+      max-width: 48%;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .radioGrid{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 8px;
+    }
+    @media (min-width: 640px){
+      .radioGrid{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+    }
+    .opt{
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      padding: 10px 10px;
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      cursor:pointer;
+      min-height: 44px;
+      user-select:none;
+    }
+    .opt input{ width: 18px; height: 18px; }
+    .opt:focus-within{ box-shadow: var(--focus); }
+    select, textarea, input[type="text"]{
+      width: 100%;
+      min-height: 44px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    textarea{ min-height: 120px; resize: vertical; }
+    select:focus-visible, textarea:focus-visible, input[type="text"]:focus-visible{
+      outline:none; box-shadow: var(--focus);
+    }
+    option{ color: #111827; }
+
+    .bottomBar{
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      z-index: 50;
+      background: rgba(0,0,0,0.20);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(255,255,255,0.10);
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    }
+    .bottomInner{
+      max-width: 1100px;
+      margin: 0 auto;
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      justify-content: space-between;
+    }
+    .bottomInner .left, .bottomInner .right{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+    }
+    .bottomInner .right{ margin-left: auto; }
+    .bottomHint{
+      color: var(--muted);
+      font-size: 12px;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 44vw;
+    }
+    @media (max-width: 520px){
+      .bottomHint{ display:none; }
+    }
+
+    .tabs{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .tab{
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      cursor:pointer;
+      min-height: 44px;
+      display:inline-flex;
+      align-items:center;
+      gap: 10px;
+      user-select:none;
+      font-weight: 750;
+      color: var(--muted);
+    }
+    .tab.active{
+      color: var(--text);
+      background: linear-gradient(135deg, rgba(93,214,198,0.18), rgba(122,162,255,0.14));
+      border-color: rgba(93,214,198,0.28);
+    }
+    .tab:focus-visible{ outline:none; box-shadow: var(--focus); }
+
+    .row{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items:center;
+    }
+    .row > *{ flex: 0 0 auto; }
+    .row .grow{ flex: 1 1 auto; }
+
+    .kpi{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 10px;
+    }
+    @media (min-width: 740px){
+      .kpi{ grid-template-columns: repeat(4, minmax(0,1fr)); }
+    }
+    .kpiItem{
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      padding: 12px;
+      min-height: 78px;
+      display:flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .kpiItem .lab{ color: var(--muted); font-size: 12px; }
+    .kpiItem .val{ font-weight: 950; font-size: 22px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+    .kpiItem .sub{ color: var(--faint); font-size: 12px; }
+
+    .chartWrap{
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      padding: 12px;
+      overflow: hidden;
+    }
+    .chartScroller{
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+    .chartScroller canvas{
+      min-width: 520px;
+      width: 100%;
+      height: 320px;
+      max-height: 320px;
+    }
+    @media (min-width: 900px){
+      .chartScroller canvas{ min-width: 0; height: 360px; max-height: 360px; }
+    }
+
+    .toast{
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(84px + env(safe-area-inset-bottom));
+      z-index: 60;
+      display:flex;
+      justify-content:center;
+      pointer-events:none;
+    }
+    .toast > div{
+      max-width: 920px;
+      width: 100%;
+      border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
+      padding: 12px 14px;
+      display:flex;
+      gap: 10px;
+      align-items:flex-start;
+      pointer-events:auto;
+    }
+    .toast .msg{ flex: 1 1 auto; }
+    .toast .msg b{ display:block; font-weight: 900; margin-bottom: 2px; }
+    .toast .msg small{ color: var(--muted); line-height: 1.35; display:block; }
+    .toast .x{
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.18);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 10px;
+      cursor:pointer;
+      min-height: 40px;
+    }
+    .toast .x:focus-visible{ outline:none; box-shadow: var(--focus); }
+
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .small{ font-size: 12px; color: var(--muted); }
+    .divider{ height: 1px; background: rgba(255,255,255,0.10); margin: 12px 0; }
+    .warnText{ color: rgba(255,204,102,0.95); }
+    .okText{ color: rgba(68,209,139,0.95); }
+    .dangerText{ color: rgba(255,91,110,0.95); }
+
+    .mappingPreview{
+      max-height: 320px;
+      overflow:auto;
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      padding: 10px;
+    }
+    table{
+      width:100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    th, td{
+      padding: 8px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.10);
+      vertical-align: top;
+    }
+    th{
+      text-align:left;
+      color: var(--muted);
+      font-weight: 800;
+      position: sticky;
+      top: 0;
+      background: rgba(0,0,0,0.12);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .tag{
+      display:inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar" role="banner">
+    <div class="topbar-inner">
+      <div class="brand" aria-label="App Titel">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M7 7c0-2.2 1.8-4 4-4h2c2.2 0 4 1.8 4 4v3c0 1-.4 1.9-1.1 2.6l-2.2 2.2c-.5.5-.7 1.2-.5 1.9l.8 2.4c.3 1-0.4 1.9-1.4 1.9h-1.6c-1 0-1.7-.9-1.4-1.9l.8-2.4c.2-.7 0-1.4-.5-1.9L8.1 12.6C7.4 11.9 7 11 7 10V7Z" stroke="white" stroke-width="1.6" opacity="0.95"/>
+            <path d="M5 13c1.5 1.4 3.8 2.3 7 2.3S17.5 14.4 19 13" stroke="white" stroke-width="1.6" opacity="0.85"/>
+          </svg>
+        </div>
+        <div class="titlewrap">
+          <p class="apptitle">DarmKur Tagebuch</p>
+          <p class="subtitle" id="subtitle">12 Wochen · lokal gespeichert · Charts mit Chart.js</p>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <button class="btn icon" id="btnTheme" title="Dark/Light Mode umschalten" aria-label="Theme umschalten">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" stroke="currentColor" stroke-width="1.7"/>
+          <path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+        <span style="display:none" id="themeLabel">Theme</span>
+      </button>
+
+      <button class="btn" id="btnHelp" aria-label="Hinweise anzeigen">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 17h.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.8.7-1.2 1.1-1.2 2.2v.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="1.7"/>
+        </svg>
+        Hinweise
+      </button>
+    </div>
+  </div>
+
+  <main class="app" id="app" role="main" aria-live="polite"></main>
+
+  <div class="bottomBar" id="bottomBar" hidden>
+    <div class="bottomInner">
+      <div class="left">
+        <button class="btn" id="bbBack" aria-label="Zurück">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M15 18 9 12l6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Zurück
+        </button>
+        <span class="bottomHint" id="bbHint">Woche bearbeiten</span>
+      </div>
+
+      <div class="right">
+        <button class="btn" id="bbDuplicate" title="Vorwoche übernehmen">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M9 9h10v10H9V9Z" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+          Duplizieren
+        </button>
+
+        <button class="btn primary" id="bbSave" aria-label="Speichern">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M7 7h10v14H7V7Z" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M9 3h6v4H9V3Z" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M9 14h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+          Speichern
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden>
+    <div role="status" aria-live="assertive">
+      <div class="msg">
+        <b id="toastTitle">Info</b>
+        <small id="toastText">…</small>
+      </div>
+      <button class="x" id="toastClose" aria-label="Toast schließen">OK</button>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    "use strict";
+
+    /*********************************************************************
+     * 1) Aus Screenshots rekonstruierte Inhalte (QUESTIONNAIRE)
+     *    - Symptomtagebuch: Skalen 1–10 (1=schlecht, 10=perfekt)
+     *    - Stuhlgang: 1–7 (Bristol Stuhl-Skala, Referenz im Text)
+     *    - Gewohnheiten-Checkliste: tägliche Kreise → Wochenwert als 0–7 Tage erfüllt
+     *    - Freitext: “Was mir sonst noch aufgefallen ist” (sichtbar als Überschrift)
+     *********************************************************************/
+    const STORAGE_KEY = "darmkur_tagebuch_vault";
+    const STORAGE_VERSION = 1;
+    const TOTAL_WEEKS = 12;
+
+    /** Chart.js CDN, wird für optionalen SW-Cache verwendet */
+    const CHARTJS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
+
+    const QUESTIONNAIRE = [
+      // ===== Symptomtagebuch (S.046) =====
+      {
+        id: "sym_beschwerdefreiheit",
+        section: "Symptomtagebuch",
+        label: "Beschwerdefreiheit",
+        helpText: "Bewerte den Zustand (1=schlecht, 10=perfekt). Im Buch ist es täglich vorgesehen; hier erfassen wir pro Woche einen Wert (z.B. Durchschnitt/Gefühl).",
+        type: "slider",
+        required: false,
+        scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
+      },
+      {
+        id: "sym_energielevel",
+        section: "Symptomtagebuch",
+        label: "Energielevel",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
+        type: "slider",
+        required: false,
+        scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
+      },
+      {
+        id: "sym_stimmung",
+        section: "Symptomtagebuch",
+        label: "Stimmung",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
+        type: "slider",
+        required: false,
+        scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
+      },
+      {
+        id: "sym_schlaf",
+        section: "Symptomtagebuch",
+        label: "Schlaf",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
+        type: "slider",
+        required: false,
+        scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
+      },
+      {
+        id: "sym_entspannung",
+        section: "Symptomtagebuch",
+        label: "Zeit für Entspannung",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
+        type: "slider",
+        required: false,
+        scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
+      },
+      {
+        id: "sym_stuhlgang",
+        section: "Symptomtagebuch",
+        label: "Stuhlgang",
+        helpText: "Bewertung 1–7; orientiere dich an der Bristol Stuhl-Skala (im Buch wird auf S.40 verwiesen). Hier als Wochenwert.",
+        type: "slider",
+        required: false,
+        scale: { min: 1, max: 7, step: 1, leftLabel: "1", rightLabel: "7", unit: "" }
+      },
+      {
+        id: "sym_heisshungerfreiheit",
+        section: "Symptomtagebuch",
+        label: "Heißhungerfreiheit",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
+        type: "slider",
+        required: false,
+        scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
+      },
+      {
+        id: "sym_bewegungslevel",
+        section: "Symptomtagebuch",
+        label: "Bewegungslevel",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
+        type: "slider",
+        required: false,
+        scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
+      },
+
+      // ===== Gewohnheiten-Checkliste (S.047) =====
+      {
+        id: "hab_wasser",
+        section: "Gewohnheiten-Checkliste",
+        label: "Morgens 1 Glas Wasser mit Salz & Zitrone oder Apfelessig",
+        helpText: "Im Buch: täglich ankreuzen. Hier: Wie viele Tage in dieser Woche umgesetzt?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_protein",
+        section: "Gewohnheiten-Checkliste",
+        label: "Proteinreiches Frühstück & Mittagessen",
+        helpText: "Wie viele Tage in dieser Woche umgesetzt?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_fairment",
+        section: "Gewohnheiten-Checkliste",
+        label: "Einnahme Fairmentprodukte",
+        helpText: "Wie viele Tage in dieser Woche umgesetzt?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_koffein",
+        section: "Gewohnheiten-Checkliste",
+        label: "Max. 1 Kaffee / 1 grüner Tee",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_keine_fertigprodukte",
+        section: "Gewohnheiten-Checkliste",
+        label: "Keine Fertigprodukte",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_keinzucker",
+        section: "Gewohnheiten-Checkliste",
+        label: "Kein Zucker, Softdrinks oder Süßstoffe",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_keine_margarine",
+        section: "Gewohnheiten-Checkliste",
+        label: "Keine Margarine und Saatenöle",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_keine_unfermilch",
+        section: "Gewohnheiten-Checkliste",
+        label: "Keine unfermentierten Milchprodukte",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_keine_wurst",
+        section: "Gewohnheiten-Checkliste",
+        label: "Keine Wurst oder Wurstwaren",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_keingluten",
+        section: "Gewohnheiten-Checkliste",
+        label: "Kein glutenhaltiges Getreide",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_keinalkohol",
+        section: "Gewohnheiten-Checkliste",
+        label: "Kein Alkohol",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+      {
+        id: "hab_nichtessen_vor_schlaf",
+        section: "Gewohnheiten-Checkliste",
+        label: "Nichts essen ab 3 Std. vor dem Schlafengehen",
+        helpText: "Wie viele Tage in dieser Woche eingehalten?",
+        type: "slider",
+        required: false,
+        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+      },
+
+      // ===== Freitext (sichtbar als Überschrift unten) =====
+      {
+        id: "notes_week",
+        section: "Notizen",
+        label: "Was mir sonst noch aufgefallen ist",
+        helpText: "Freitext für Beobachtungen (z.B. Auslöser, besondere Mahlzeiten, Stress, Reisen, Medikamente, etc.).",
+        type: "text",
+        required: false
+      }
+    ];
+
+    /*********************************************************************
+     * 2) Utilities
+     *********************************************************************/
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+    const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+    const roundToStep = (v, step) => {
+      if (!step || step <= 0) return v;
+      const inv = 1 / step;
+      return Math.round(v * inv) / inv;
+    };
+    const nowISO = () => new Date().toISOString();
+    const pad2 = (n) => String(n).padStart(2, "0");
+
+    function debounce(fn, wait = 350){
+      let t = null;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), wait);
+      };
+    }
+
+    function normalizeLabel(s){
+      return String(s ?? "")
+        .toLowerCase()
+        .trim()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")  // diacritics
+        .replace(/ß/g, "ss")
+        .replace(/ä/g, "ae")
+        .replace(/ö/g, "oe")
+        .replace(/ü/g, "ue")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    }
+
+    function formatWeekLabel(i){ return `Woche ${i}`; }
+
+    function computeCompletion(week){
+      const answers = week?.answers || {};
+      let total = 0, filled = 0;
+      for (const q of QUESTIONNAIRE){
+        // Notizen zählen als optionaler Bonus: nicht in Completion rein, damit "unvollständig" nicht zu streng ist
+        if (q.type === "text" && q.id === "notes_week") continue;
+        total++;
+        const v = answers[q.id];
+        if (v !== null && v !== undefined && v !== "") filled++;
+      }
+      const pct = total ? Math.round((filled / total) * 100) : 0;
+      return { total, filled, pct };
+    }
+
+    /*********************************************************************
+     * 3) Storage + Migration
+     *********************************************************************/
+    function defaultState(){
+      const weeks = [];
+      for (let i = 1; i <= TOTAL_WEEKS; i++){
+        weeks.push({
+          weekIndex: i,
+          dateStart: "",
+          dateEnd: "",
+          updatedAt: "",
+          answers: {},
+          notes: "" // reserved (we also store notes in answers[notes_week])
+        });
+      }
+      return {
+        version: STORAGE_VERSION,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+        weeks
+      };
+    }
+
+    function migrateStorage(obj){
+      // Future-ready: handle migrations by version number
+      if (!obj || typeof obj !== "object") return defaultState();
+
+      const v = Number(obj.version || 0);
+      if (v === STORAGE_VERSION){
+        // Ensure 12 weeks exist
+        const base = structuredClone(obj);
+        if (!Array.isArray(base.weeks)) base.weeks = [];
+        const existing = new Map(base.weeks.map(w => [Number(w.weekIndex), w]));
+        const weeks = [];
+        for (let i = 1; i <= TOTAL_WEEKS; i++){
+          const w = existing.get(i) || { weekIndex: i, dateStart:"", dateEnd:"", updatedAt:"", answers:{}, notes:"" };
+          if (!w.answers || typeof w.answers !== "object") w.answers = {};
+          if (w.dateStart == null) w.dateStart = "";
+          if (w.dateEnd == null) w.dateEnd = "";
+          if (w.updatedAt == null) w.updatedAt = "";
+          weeks.push(w);
+        }
+        base.weeks = weeks;
+        if (!base.createdAt) base.createdAt = nowISO();
+        if (!base.updatedAt) base.updatedAt = nowISO();
+        base.version = STORAGE_VERSION;
+        return base;
+      }
+
+      // Simple migration path from unknown/older: keep best-effort weeks/answers
+      const fresh = defaultState();
+      try{
+        if (Array.isArray(obj.weeks)){
+          for (const w of obj.weeks){
+            const idx = Number(w.weekIndex);
+            if (!idx || idx < 1 || idx > TOTAL_WEEKS) continue;
+            const target = fresh.weeks[idx - 1];
+            target.dateStart = String(w.dateStart ?? "");
+            target.dateEnd = String(w.dateEnd ?? "");
+            target.updatedAt = String(w.updatedAt ?? "");
+            if (w.answers && typeof w.answers === "object"){
+              target.answers = structuredClone(w.answers);
+            }
+          }
+        }
+        fresh.createdAt = String(obj.createdAt ?? fresh.createdAt);
+        fresh.updatedAt = String(obj.updatedAt ?? fresh.updatedAt);
+      } catch(e){ /* ignore */ }
+      return fresh;
+    }
+
+    function loadState(){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      try{
+        const obj = JSON.parse(raw);
+        return migrateStorage(obj);
+      } catch(e){
+        return defaultState();
+      }
+    }
+
+    function saveState(){
+      state.updatedAt = nowISO();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      updateSubtitle();
+    }
+
+    const debouncedSaveState = debounce(saveState, 500);
+
+    /*********************************************************************
+     * 4) CSV Export/Import (robust, ohne Library)
+     *********************************************************************/
+    function detectDelimiter(text){
+      // Count separators on first few non-empty lines outside of quotes
+      const candidates = [";", ",", "\t"];
+      const lines = [];
+      let cur = "";
+      let inQ = false;
+      for (let i=0;i<text.length;i++){
+        const ch = text[i];
+        if (ch === '"'){
+          if (inQ && text[i+1] === '"'){ cur += '"'; i++; continue; }
+          inQ = !inQ;
+          cur += ch;
+          continue;
+        }
+        if (!inQ && (ch === "\n")){
+          const line = cur.trimEnd();
+          if (line.trim()) lines.push(line);
+          cur = "";
+          if (lines.length >= 8) break;
+          continue;
+        }
+        cur += ch;
+      }
+      if (cur.trim()) lines.push(cur.trimEnd());
+
+      const scores = new Map(candidates.map(c => [
