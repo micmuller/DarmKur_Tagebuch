@@ -6,8 +6,8 @@ How to run:
   und dann in der App “Service Worker exportieren” nutzen (sw.js herunterladen und im gleichen Ordner ablegen).
 - Hinweis: Ohne Service Worker sind CDN-Ressourcen (Chart.js) ggf. nicht offline verfügbar.
 -->
-  <!-- Version: v0.9.1: Render fixed -->
-  <!-- Version: v0.9.2: Versioning und fixes -->
+  <!-- Version: v0.9.7: Fix renderHome scope (strict-mode) + CSV Export/Import -->
+  <!-- Version: v0.9.7 -->
 
 <!doctype html>
 <html lang="de">
@@ -15,6 +15,10 @@ How to run:
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0f172a" />
+  <!-- Inline Icons (verhindert 404 für favicon/apple-touch-icon bei python http.server) -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20viewBox%3D'0%200%20512%20512'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'1'%3E%3Cstop%20offset%3D'0'%20stop-color%3D'%235dd6c6'/%3E%3Cstop%20offset%3D'1'%20stop-color%3D'%237aa2ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20x%3D'64'%20y%3D'64'%20width%3D'384'%20height%3D'384'%20rx%3D'120'%20fill%3D'url(%23g)'/%3E%3Cpath%20d%3D'M176%20184c0-40%2032-72%2072-72h16c40%200%2072%2032%2072%2072v60c0%2018-7%2035-20%2048l-40%2040c-10%2010-14%2025-10%2039l14%2044c4%2012-6%2025-19%2025h-30c-13%200-23-13-19-25l14-44c4-14%200-29-10-39l-40-40c-13-13-20-30-20-48v-60z'%20fill%3D'white'%20opacity%3D'0.95'/%3E%3Cpath%20d%3D'M140%20292c28%2026%2070%2042%20116%2042s88-16%20116-42'%20stroke%3D'white'%20stroke-width%3D'20'%20stroke-linecap%3D'round'%20opacity%3D'0.85'%20fill%3D'none'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20viewBox%3D'0%200%20512%20512'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'1'%3E%3Cstop%20offset%3D'0'%20stop-color%3D'%235dd6c6'/%3E%3Cstop%20offset%3D'1'%20stop-color%3D'%237aa2ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20x%3D'64'%20y%3D'64'%20width%3D'384'%20height%3D'384'%20rx%3D'120'%20fill%3D'url(%23g)'/%3E%3Cpath%20d%3D'M176%20184c0-40%2032-72%2072-72h16c40%200%2072%2032%2072%2072v60c0%2018-7%2035-20%2048l-40%2040c-10%2010-14%2025-10%2039l14%2044c4%2012-6%2025-19%2025h-30c-13%200-23-13-19-25l14-44c4-14%200-29-10-39l-40-40c-13-13-20-30-20-48v-60z'%20fill%3D'white'%20opacity%3D'0.95'/%3E%3Cpath%20d%3D'M140%20292c28%2026%2070%2042%20116%2042s88-16%20116-42'%20stroke%3D'white'%20stroke-width%3D'20'%20stroke-linecap%3D'round'%20opacity%3D'0.85'%20fill%3D'none'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon-precomposed" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20viewBox%3D'0%200%20512%20512'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'1'%3E%3Cstop%20offset%3D'0'%20stop-color%3D'%235dd6c6'/%3E%3Cstop%20offset%3D'1'%20stop-color%3D'%237aa2ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20x%3D'64'%20y%3D'64'%20width%3D'384'%20height%3D'384'%20rx%3D'120'%20fill%3D'url(%23g)'/%3E%3Cpath%20d%3D'M176%20184c0-40%2032-72%2072-72h16c40%200%2072%2032%2072%2072v60c0%2018-7%2035-20%2048l-40%2040c-10%2010-14%2025-10%2039l14%2044c4%2012-6%2025-19%2025h-30c-13%200-23-13-19-25l14-44c4-14%200-29-10-39l-40-40c-13-13-20-30-20-48v-60z'%20fill%3D'white'%20opacity%3D'0.95'/%3E%3Cpath%20d%3D'M140%20292c28%2026%2070%2042%20116%2042s88-16%20116-42'%20stroke%3D'white'%20stroke-width%3D'20'%20stroke-linecap%3D'round'%20opacity%3D'0.85'%20fill%3D'none'/%3E%3C/svg%3E">
   <title>DarmKur Tagebuch</title>
 
   <!-- Chart.js (CDN, kostenlos) -->
@@ -732,7 +736,7 @@ How to run:
           </svg>
         </div>
         <div class="titlewrap">
-          <p class="apptitle">DarmKur Tagebuch <span class="versionBadge" id="versionBadge">v0.9.2</span></p>
+          <p class="apptitle">DarmKur Tagebuch <span class="versionBadge" id="versionBadge">v0.9.7</span></p>
           <p class="subtitle" id="subtitle">12 Wochen · lokal gespeichert · Charts mit Chart.js</p>
         </div>
       </div>
@@ -825,7 +829,7 @@ How to run:
      *    - Freitext: “Was mir sonst noch aufgefallen ist” (sichtbar als Überschrift)
      *********************************************************************/
     const STORAGE_KEY = "darmkur_tagebuch_vault";
-    const APP_VERSION = "v0.9.1";
+    const APP_VERSION = "v0.9.7";
     const STORAGE_VERSION = 1;
     const TOTAL_WEEKS = 12;
 
@@ -1690,6 +1694,9 @@ function clearCharts(){
   charts = {};
 }
 
+// Renderer bindings (avoid block-scoped function declarations in strict mode)
+let renderHome, renderWeek, renderDashboard, renderDataTools, renderQuestion;
+
 function render(){
   updateSubtitle();
   clearCharts();
@@ -1727,7 +1734,7 @@ if (typeof validateAndNormalizeAnswer !== "function"){
 
 // --- Fallback Renderer: falls renderHome/renderWeek/renderDashboard/renderDataTools fehlen ---
 if (typeof renderHome !== "function"){
-  function renderHome(){
+  renderHome = function renderHome(){
     const wrap = document.createElement("div");
     wrap.className = "grid two";
 
@@ -1818,11 +1825,11 @@ if (typeof renderHome !== "function"){
     c2.querySelector("#btnDemo").addEventListener("click", () => fillDemoData());
 
     return wrap;
-  }
+  };
 }
 
 if (typeof renderWeek !== "function"){
-  function renderWeek(weekIndex){
+  renderWeek = function renderWeek(weekIndex){
     const w = state.weeks[weekIndex-1];
     const wrap = document.createElement("div");
     wrap.className = "grid two";
@@ -1949,7 +1956,7 @@ if (typeof renderWeek !== "function"){
     return wrap;
   }
 
-  function renderQuestion(q, week){
+  renderQuestion = function renderQuestion(q, week){
     const answers = week.answers || (week.answers = {});
     const current = answers[q.id];
 
@@ -2031,11 +2038,11 @@ if (typeof renderWeek !== "function"){
     }
 
     return wrap;
-  }
+  };
 }
 
 if (typeof renderDashboard !== "function"){
-  function renderDashboard(){
+  renderDashboard = function renderDashboard(){
     const wrap = document.createElement("div");
     wrap.className = "grid two";
 
@@ -2157,11 +2164,11 @@ if (typeof renderDashboard !== "function"){
     waitChart();
 
     return wrap;
-  }
+  };
 }
 
 if (typeof renderDataTools !== "function"){
-  function renderDataTools(){
+  renderDataTools = function renderDataTools(){
     const wrap = document.createElement("div");
     wrap.className = "grid two";
 
@@ -2243,57 +2250,98 @@ if (typeof renderDataTools !== "function"){
     c.querySelector("#btnSW").addEventListener("click", () => exportServiceWorker());
     c.querySelector("#btnDemo").addEventListener("click", () => fillDemoData());
 
+        // --- JSON Export ---
     c.querySelector("#btnJsonExport").addEventListener("click", () => {
-      downloadTextFile(`darmkur_backup_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state, null, 2), "application/json;charset=utf-8");
+      const json = JSON.stringify(state, null, 2);
+      downloadTextFile(
+        `darmkur_backup_${new Date().toISOString().slice(0,10)}.json`,
+        json,
+        "application/json;charset=utf-8"
+      );
       toast("JSON exportiert", "Backup-Datei wurde heruntergeladen.");
     });
 
-    c.querySelector("#jsonFile").addEventListener("change", async (e) => {
-      const f = e.target.files && e.target.files[0];
+    // --- JSON Import ---
+    const jsonFile = c.querySelector("#jsonFile");
+    jsonFile.addEventListener("change", async () => {
+      const f = jsonFile.files && jsonFile.files[0];
+      jsonFile.value = "";
       if (!f) return;
       try{
-        const txt = await f.text();
-        const obj = JSON.parse(txt);
+        const text = await f.text();
+        const obj = JSON.parse(text);
         state = migrateStorage(obj);
         saveState();
-        render();
-        toast("JSON importiert", "Daten wurden übernommen.");
-      } catch(err){
-        toast("Fehler", `JSON Import fehlgeschlagen: ${err.message}`);
-      } finally { e.target.value = ""; }
+        navTo("home");
+        toast("JSON importiert", "Daten wurden übernommen und gespeichert.");
+      } catch(e){
+        console.error("[DarmKur] JSON import failed", e);
+        toast("Import fehlgeschlagen", e.message || String(e));
+      }
     });
 
-    c.querySelector("#csvFile").addEventListener("change", async (e) => {
-      const f = e.target.files && e.target.files[0];
+    // --- CSV Import (wiring) ---
+    const csvFile = c.querySelector("#csvFile");
+    const modeSel = c.querySelector("#csvMode");
+    csvFile.addEventListener("change", async () => {
+      const f = csvFile.files && csvFile.files[0];
+      csvFile.value = "";
       if (!f) return;
-      const mode = c.querySelector("#csvMode").value;
       try{
-        await importCSV(f, mode);
+        await importCSV(f, modeSel.value);
         updateImportPreview(side.querySelector("#preview"));
-      } catch(err){
-        toast("Fehler", `CSV Import fehlgeschlagen: ${err.message}`);
-      } finally { e.target.value = ""; }
+      } catch(e){
+        console.error("[DarmKur] CSV import failed", e);
+        toast("CSV Import fehlgeschlagen", e.message || String(e));
+        updateImportPreview(side.querySelector("#preview"));
+      }
     });
 
+    // Preview beim Öffnen initial setzen
     updateImportPreview(side.querySelector("#preview"));
-    return wrap;
-  }
 
-  function updateImportPreview(el){
-    if (!el) return;
-    if (!lastImportReport){ el.textContent = "Noch kein Import durchgeführt."; return; }
-    const { headers, mapInfo, warnings } = lastImportReport;
-    const parts = [];
-    parts.push(`<div class="small">Headers (${headers.length}): <span class="mono">${headers.slice(0, 12).map(h=>h.replace(/</g,"&lt;")).join(" · ")}${headers.length>12?" …":""}</span></div>`);
-    parts.push(`<div class="divider"></div>`);
-    parts.push(`<div><span class="tag">ID-Mapping: ${mapInfo.direct.length}</span> <span class="tag">Label-Mapping: ${mapInfo.fallback.length}</span></div>`);
-    if (mapInfo.fallback.length){ parts.push(`<div class="small warnText" style="margin-top:8px;">Achtung: Label-Fallback genutzt (potenziell unsicher).</div>`); }
-    if (warnings && warnings.length){
-      parts.push(`<div class="divider"></div><div class="small warnText">Warnungen (Top ${Math.min(50,warnings.length)}):</div>`);
-      parts.push(`<ul class="small">${warnings.slice(0,50).map(w=>`<li>${w.replace(/</g,"&lt;")}</li>`).join("")}</ul>`);
+    return wrap;
+  };
+
+    function updateImportPreview(previewEl){
+    if (!previewEl) return;
+    if (!lastImportReport){
+        previewEl.textContent = "Noch kein Import durchgeführt.";
+        return;
     }
-    el.innerHTML = parts.join("");
-  }
+    const { mapInfo, warnings } = lastImportReport;
+    const parts = [];
+    parts.push(`<div class="small"><b>Headers:</b> ${mapInfo.totalHeaders} · <b>Erwartet:</b> ${mapInfo.totalExpected}</div>`);
+    parts.push(`<div class="divider"></div>`);
+
+    parts.push(`<div class="small"><b>Direkt (q_id):</b> ${mapInfo.direct.length}</div>`);
+    if (mapInfo.direct.length){
+        parts.push(`<table><thead><tr><th>Erwartet</th><th>Quelle</th><th>Typ</th></tr></thead><tbody>`);
+        for (const m of mapInfo.direct.slice(0, 40)){
+        parts.push(`<tr><td><span class="mono">${m.expected}</span></td><td><span class="mono">${m.mappedFrom}</span></td><td><span class="tag">${m.kind}</span></td></tr>`);
+        }
+        parts.push(`</tbody></table>`);
+    }
+
+    if (mapInfo.fallback.length){
+        parts.push(`<div class="divider"></div>`);
+        parts.push(`<div class="small warnText"><b>Fallback (Label-Matching):</b> ${mapInfo.fallback.length} — bitte kurz prüfen</div>`);
+        parts.push(`<table><thead><tr><th>Erwartet</th><th>Quelle</th><th>Typ</th></tr></thead><tbody>`);
+        for (const m of mapInfo.fallback.slice(0, 60)){
+        parts.push(`<tr><td><span class="mono">${m.expected}</span></td><td>${m.mappedFrom}</td><td><span class="tag">${m.kind}</span></td></tr>`);
+        }
+        parts.push(`</tbody></table>`);
+    }
+
+    parts.push(`<div class="divider"></div>`);
+    parts.push(`<div class="small"><b>Warnungen:</b> ${warnings.length}</div>`);
+    if (warnings.length){
+        parts.push(`<ul class="small" style="margin:8px 0 0; padding-left: 18px;">`);
+        for (const w of warnings.slice(0, 60)) parts.push(`<li>${w}</li>`);
+        parts.push(`</ul>`);
+    }
+    previewEl.innerHTML = parts.join("");
+    }
 }
 
 // --- App Init (entscheidend: sonst bleibt die Seite leer) ---
@@ -2385,4 +2433,9 @@ if (document.readyState === "loading"){
 } else {
   init();
 }
+
 })();
+
+</script>
+</body>
+</html>
