@@ -6,6 +6,9 @@ How to run:
   und dann in der App “Service Worker exportieren” nutzen (sw.js herunterladen und im gleichen Ordner ablegen).
 - Hinweis: Ohne Service Worker sind CDN-Ressourcen (Chart.js) ggf. nicht offline verfügbar.
 -->
+  <!-- Version: v0.9.1: Render fixed -->
+
+
 <!doctype html>
 <html lang="de">
 <head>
@@ -1644,8 +1647,628 @@ function render(){
   }
 }
 
-// ... rest of app unchanged ...
+/*********************************************************************
+ * 8) Fallback UI + App Init
+ *    (Fix für leere Seite nach Netz-Abbruch: fehlende Renderer/Init)
+ *********************************************************************/
 
-// (The full implementation is supplied in the code block you provided.)
+// --- Fix: falls eine ungültige Debug-Leiche existiert, sichere Funktion bereitstellen ---
+// (Manche abgebrochene Generierungen hinterlassen so etwas wie: { considerType:0 } -> SyntaxError)
+if (typeof validateAndNormalizeAnswer !== "function"){
+  function validateAndNormalizeAnswer(q, raw){
+    return coerceValue(q, raw);
+  }
+}
 
-// (See above: all code from function detectDelimiter(text){ ... through </html> is now replaced.)
+// --- Fallback Renderer: falls renderHome/renderWeek/renderDashboard/renderDataTools fehlen ---
+if (typeof renderHome !== "function"){
+  function renderHome(){
+    const wrap = document.createElement("div");
+    wrap.className = "grid two";
+
+    const c1 = document.createElement("section");
+    c1.className = "card";
+    c1.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>Wochenübersicht</h2>
+          <p>Wähle eine Woche (1–12). Status zeigt, ob bereits Werte erfasst sind.</p>
+        </div>
+        <div class="tabs" aria-label="Navigation">
+          <button class="tab active" type="button" aria-current="page">Wochen</button>
+          <button class="tab" type="button" id="tabDash">Auswertung</button>
+          <button class="tab" type="button" id="tabData">Daten</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="weeks" id="weeksGrid"></div>
+      </div>
+    `;
+
+    const grid = c1.querySelector("#weeksGrid");
+    for (let i=1;i<=TOTAL_WEEKS;i++){
+      const w = state.weeks[i-1];
+      const comp = computeCompletion(w);
+      const tile = document.createElement("button");
+      tile.type = "button";
+      tile.className = "weekTile";
+      tile.setAttribute("aria-label", `Woche ${i} öffnen`);
+      const status = comp.filled === 0 ? "leer" : (comp.pct >= 70 ? "ok" : "warn");
+      const badgeClass = comp.filled === 0 ? "empty" : (comp.pct >= 70 ? "ok" : "warn");
+      const upd = w.updatedAt ? new Date(w.updatedAt) : null;
+      const updTxt = upd ? `${pad2(upd.getDate())}.${pad2(upd.getMonth()+1)}.${upd.getFullYear()}` : "—";
+      tile.innerHTML = `
+        <div class="weekTop">
+          <div>
+            <div class="weekName">${formatWeekLabel(i)}</div>
+            <div class="weekMeta">Letztes Update: ${updTxt}</div>
+          </div>
+          <span class="badge ${badgeClass}">${status === "leer" ? "leer" : (status === "ok" ? "ausgefüllt" : "teilweise")}</span>
+        </div>
+        <div class="prog" aria-hidden="true"><div style="width:${comp.pct}%;"></div></div>
+        <div class="weekMeta">${comp.filled}/${comp.total} Felder · ${comp.pct}%</div>
+      `;
+      tile.addEventListener("click", () => navTo("week", i));
+      grid.appendChild(tile);
+    }
+
+    const c2 = document.createElement("section");
+    c2.className = "card";
+    c2.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>Quick Actions</h2>
+          <p>Demo-Daten, Auswertung und Daten-Export/Import.</p>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="hint">
+          <b>Offline-Hinweis</b><br>
+          Chart.js wird über CDN geladen. Ohne Service Worker kann die Auswertung offline ggf. nicht funktionieren.
+          <div class="mini">Optional: „Service Worker exportieren“ im Bereich <b>Daten</b>.</div>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <button class="btn primary" type="button" id="btnGoDash">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 19h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M7 15l3-3 3 2 4-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Auswertung öffnen
+          </button>
+          <button class="btn" type="button" id="btnGoData">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 7h10v14H7V7Z" stroke="currentColor" stroke-width="1.7"/><path d="M9 3h6v4H9V3Z" stroke="currentColor" stroke-width="1.7"/></svg>
+            Daten / Export
+          </button>
+        </div>
+        <div class="divider"></div>
+        <button class="btn" type="button" id="btnDemo">Demo-Daten füllen</button>
+      </div>
+    `;
+
+    wrap.appendChild(c1);
+    wrap.appendChild(c2);
+
+    c1.querySelector("#tabDash").addEventListener("click", () => navTo("dashboard"));
+    c1.querySelector("#tabData").addEventListener("click", () => navTo("data"));
+    c2.querySelector("#btnGoDash").addEventListener("click", () => navTo("dashboard"));
+    c2.querySelector("#btnGoData").addEventListener("click", () => navTo("data"));
+    c2.querySelector("#btnDemo").addEventListener("click", () => fillDemoData());
+
+    return wrap;
+  }
+}
+
+if (typeof renderWeek !== "function"){
+  function renderWeek(weekIndex){
+    const w = state.weeks[weekIndex-1];
+    const wrap = document.createElement("div");
+    wrap.className = "grid two";
+
+    const cForm = document.createElement("section");
+    cForm.className = "card";
+    cForm.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>${formatWeekLabel(weekIndex)} · Eingabe</h2>
+          <p>Erfasse die Werte als Wochen-Score (z.B. Durchschnitt oder subjektiver Eindruck).</p>
+        </div>
+        <div class="row">
+          <button class="btn" type="button" id="btnWeekDelete">Woche löschen</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="row">
+          <label class="small">Startdatum<br><input type="text" id="dateStart" placeholder="optional"></label>
+          <label class="small">Enddatum<br><input type="text" id="dateEnd" placeholder="optional"></label>
+        </div>
+        <div class="divider"></div>
+        <div id="qContainer"></div>
+      </div>
+    `;
+
+    const cSide = document.createElement("section");
+    cSide.className = "card";
+    const comp = computeCompletion(w);
+    cSide.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>Status</h2>
+          <p>Fortschritt und Aktionen.</p>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="kpi">
+          <div class="kpiItem"><div class="lab">Gefüllt</div><div class="val">${comp.filled}/${comp.total}</div><div class="sub">${comp.pct}%</div></div>
+          <div class="kpiItem"><div class="lab">Letztes Update</div><div class="val">${w.updatedAt ? new Date(w.updatedAt).toLocaleDateString() : "—"}</div><div class="sub">localStorage</div></div>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <button class="btn" type="button" id="btnToHome">Zur Übersicht</button>
+          <button class="btn" type="button" id="btnToDash">Auswertung</button>
+        </div>
+        <div class="divider"></div>
+        <button class="btn danger" type="button" id="btnResetAll">Reset alles</button>
+      </div>
+    `;
+
+    wrap.appendChild(cForm);
+    wrap.appendChild(cSide);
+
+    const ds = cForm.querySelector("#dateStart");
+    const de = cForm.querySelector("#dateEnd");
+    ds.value = w.dateStart || "";
+    de.value = w.dateEnd || "";
+    const saveMeta = () => {
+      w.dateStart = ds.value.trim();
+      w.dateEnd = de.value.trim();
+      w.updatedAt = nowISO();
+      debouncedSaveState();
+    };
+    ds.addEventListener("input", saveMeta);
+    de.addEventListener("input", saveMeta);
+
+    const qContainer = cForm.querySelector("#qContainer");
+    const sections = Array.from(new Set(QUESTIONNAIRE.map(q => q.section)));
+    for (const sec of sections){
+      const secQs = QUESTIONNAIRE.filter(q => q.section === sec);
+      const secWrap = document.createElement("div");
+      secWrap.innerHTML = `
+        <div class="sectionTitle">
+          <h3>${sec}</h3>
+          <small>${secQs.length} Fragen</small>
+        </div>
+      `;
+      for (const q of secQs){
+        const el = renderQuestion(q, w);
+        secWrap.appendChild(el);
+      }
+      qContainer.appendChild(secWrap);
+      qContainer.appendChild(document.createElement("div")).className = "divider";
+    }
+
+    cSide.querySelector("#btnToHome").addEventListener("click", () => navTo("home"));
+    cSide.querySelector("#btnToDash").addEventListener("click", () => navTo("dashboard"));
+
+    cForm.querySelector("#btnWeekDelete").addEventListener("click", () => {
+      if (!confirm(`Woche ${weekIndex} wirklich löschen?`)) return;
+      w.answers = {};
+      w.dateStart = "";
+      w.dateEnd = "";
+      w.updatedAt = nowISO();
+      saveState();
+      render();
+      toast("Woche gelöscht", `Woche ${weekIndex} wurde geleert.`);
+    });
+
+    cSide.querySelector("#btnResetAll").addEventListener("click", () => {
+      if (!confirm("Wirklich ALLES löschen?") ) return;
+      state = defaultState();
+      saveState();
+      navTo("home");
+      toast("Reset", "Alle Daten wurden gelöscht.");
+    });
+
+    const bbBack = document.getElementById("bbBack");
+    const bbSave = document.getElementById("bbSave");
+    const bbDup = document.getElementById("bbDuplicate");
+    if (bbBack) bbBack.onclick = () => navTo("home");
+    if (bbSave) bbSave.onclick = () => { w.updatedAt = nowISO(); saveState(); toast("Gespeichert", `${formatWeekLabel(weekIndex)} gespeichert.`); };
+    if (bbDup) bbDup.onclick = () => {
+      if (weekIndex <= 1) return toast("Duplizieren", "Keine Vorwoche vorhanden.");
+      const prev = state.weeks[weekIndex-2];
+      w.answers = structuredClone(prev.answers || {});
+      w.updatedAt = nowISO();
+      saveState();
+      render();
+      toast("Dupliziert", `Werte aus Woche ${weekIndex-1} übernommen.`);
+    };
+
+    return wrap;
+  }
+
+  function renderQuestion(q, week){
+    const answers = week.answers || (week.answers = {});
+    const current = answers[q.id];
+
+    const wrap = document.createElement("div");
+    wrap.className = "q";
+
+    const valText = (v) => (v === undefined || v === null || v === "") ? "—" : String(v);
+
+    wrap.innerHTML = `
+      <div class="qHd">
+        <div>
+          <p class="qLabel">${q.label}</p>
+          ${q.helpText ? `<p class="qHelp">${q.helpText}</p>` : ""}
+        </div>
+        <div class="qRight">
+          <div class="valPill ${valText(current)==='—' ? 'empty' : ''}" id="val_${q.id}">${valText(current)}</div>
+        </div>
+      </div>
+      <div class="qBody" id="body_${q.id}"></div>
+    `;
+
+    const body = wrap.querySelector(`#body_${q.id}`);
+    const valPill = wrap.querySelector(`#val_${q.id}`);
+
+    const setVal = (v) => {
+      if (v === "" || v === null || v === undefined){
+        delete answers[q.id];
+        valPill.textContent = "—";
+        valPill.classList.add("empty");
+      } else {
+        answers[q.id] = v;
+        valPill.textContent = String(v);
+        valPill.classList.remove("empty");
+      }
+      week.updatedAt = nowISO();
+      debouncedSaveState();
+    };
+
+    if (q.type === "slider"){
+      const sc = q.scale || { min:0,max:10,step:1 };
+      const v0 = (current === undefined || current === null || current === "") ? sc.min : Number(current);
+      body.innerHTML = `
+        <div class="sliderRow">
+          <input type="range" min="${sc.min}" max="${sc.max}" step="${sc.step}" value="${v0}" aria-label="${q.label}">
+          <div class="scaleLabels">
+            <span title="${sc.leftLabel||''}">${sc.leftLabel || ''}</span>
+            <span title="${sc.rightLabel||''}">${sc.rightLabel || ''}</span>
+          </div>
+        </div>
+      `;
+      const input = body.querySelector("input");
+      input.addEventListener("input", () => setVal(coerceValue(q, input.value)));
+      if (valText(current)==='—') setVal(coerceValue(q, v0));
+    } else if (q.type === "text"){
+      body.innerHTML = `<textarea aria-label="${q.label}" placeholder="optional">${current ? String(current) : ""}</textarea>`;
+      const ta = body.querySelector("textarea");
+      ta.addEventListener("input", () => setVal(ta.value));
+    } else if (q.type === "select"){
+      const opts = (q.options||[]).map(o => `<option value="${String(o.value)}">${o.label}</option>`).join("");
+      body.innerHTML = `<select aria-label="${q.label}"><option value="">—</option>${opts}</select>`;
+      const sel = body.querySelector("select");
+      sel.value = current ?? "";
+      sel.addEventListener("change", () => setVal(coerceValue(q, sel.value) || ""));
+    } else if (q.type === "radio"){
+      const opts = q.options || [];
+      const grid = document.createElement("div");
+      grid.className = "radioGrid";
+      for (const o of opts){
+        const id = `r_${q.id}_${o.value}`;
+        const lab = document.createElement("label");
+        lab.className = "opt";
+        lab.innerHTML = `<input type="radio" name="${q.id}" id="${id}" value="${String(o.value)}"><span>${o.label}</span>`;
+        const inp = lab.querySelector("input");
+        if (String(current) === String(o.value)) inp.checked = true;
+        inp.addEventListener("change", () => setVal(coerceValue(q, inp.value)));
+        grid.appendChild(lab);
+      }
+      body.appendChild(grid);
+    }
+
+    return wrap;
+  }
+}
+
+if (typeof renderDashboard !== "function"){
+  function renderDashboard(){
+    const wrap = document.createElement("div");
+    wrap.className = "grid two";
+
+    const c = document.createElement("section");
+    c.className = "card";
+    c.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>Auswertung</h2>
+          <p>Trends über 12 Wochen. Wähle Metriken und vergleiche sie.</p>
+        </div>
+        <div class="row">
+          <button class="btn" type="button" id="btnHome">Wochen</button>
+          <button class="btn" type="button" id="btnData">Daten</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="row"><label class="small">Metriken auswählen:</label></div>
+        <div class="row" id="metricPicker"></div>
+        <div class="divider"></div>
+        <div class="chartWrap"><div class="chartScroller"><canvas id="trendChart"></canvas></div></div>
+      </div>
+    `;
+
+    const side = document.createElement("section");
+    side.className = "card";
+    side.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>Aggregationen</h2>
+          <p>Min/Max/Ø je Metrik + Ø letzte 4 Wochen.</p>
+        </div>
+      </div>
+      <div class="bd"><div class="mappingPreview" id="aggTable"></div></div>
+    `;
+
+    wrap.appendChild(c);
+    wrap.appendChild(side);
+
+    c.querySelector("#btnHome").addEventListener("click", () => navTo("home"));
+    c.querySelector("#btnData").addEventListener("click", () => navTo("data"));
+
+    const numericQs = QUESTIONNAIRE.filter(q => q.type === "slider");
+    const picker = c.querySelector("#metricPicker");
+    const selected = new Set(numericQs.slice(0,3).map(q => q.id));
+
+    for (const q of numericQs){
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tab" + (selected.has(q.id) ? " active" : "");
+      b.textContent = q.label;
+      b.addEventListener("click", () => {
+        if (selected.has(q.id)) selected.delete(q.id); else selected.add(q.id);
+        b.classList.toggle("active", selected.has(q.id));
+        draw();
+      });
+      picker.appendChild(b);
+    }
+
+    function getSeries(qid){
+      const q = numericQs.find(x => x.id === qid);
+      const vals = [];
+      for (let i=1;i<=TOTAL_WEEKS;i++){
+        const w = state.weeks[i-1];
+        const v = w.answers ? w.answers[qid] : undefined;
+        vals.push(v === undefined ? null : Number(v));
+      }
+      return { q, vals };
+    }
+
+    function stats(vals){
+      const a = vals.filter(v => Number.isFinite(v));
+      if (!a.length) return { min:null, max:null, avg:null, last4:null };
+      const min = Math.min(...a);
+      const max = Math.max(...a);
+      const avg = a.reduce((s,v)=>s+v,0)/a.length;
+      const last = vals.slice(-4).filter(v => Number.isFinite(v));
+      const last4 = last.length ? (last.reduce((s,v)=>s+v,0)/last.length) : null;
+      return { min, max, avg, last4 };
+    }
+
+    function draw(){
+      const labels = Array.from({length: TOTAL_WEEKS}, (_,i)=>`W${i+1}`);
+      const ds = [];
+      for (const id of selected){
+        const s = getSeries(id);
+        ds.push({ label: s.q.label, data: s.vals, spanGaps: true, tension: 0.25 });
+      }
+
+      const ctx = c.querySelector("#trendChart");
+      if (charts.trend) charts.trend.destroy();
+      charts.trend = new Chart(ctx, {
+        type: "line",
+        data: { labels, datasets: ds },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            tooltip: { callbacks: { title: (items) => items?.[0] ? `Woche ${items[0].dataIndex+1}` : "" } },
+            legend: { position: "top" }
+          },
+          scales: { y: { beginAtZero: false } }
+        }
+      });
+
+      const rows = [];
+      rows.push(`<table><thead><tr><th>Metrik</th><th>Min</th><th>Max</th><th>Ø</th><th>Ø letzte 4</th></tr></thead><tbody>`);
+      for (const q of numericQs){
+        const s = getSeries(q.id);
+        const st = stats(s.vals);
+        const fmt = (v) => (v===null||v===undefined||!Number.isFinite(v)) ? "—" : (Math.round(v*100)/100).toString();
+        rows.push(`<tr><td>${q.label}</td><td>${fmt(st.min)}</td><td>${fmt(st.max)}</td><td>${fmt(st.avg)}</td><td>${fmt(st.last4)}</td></tr>`);
+      }
+      rows.push(`</tbody></table>`);
+      side.querySelector("#aggTable").innerHTML = rows.join("");
+    }
+
+    const waitChart = () => { if (window.Chart) draw(); else setTimeout(waitChart, 60); };
+    waitChart();
+
+    return wrap;
+  }
+}
+
+if (typeof renderDataTools !== "function"){
+  function renderDataTools(){
+    const wrap = document.createElement("div");
+    wrap.className = "grid two";
+
+    const c = document.createElement("section");
+    c.className = "card";
+    c.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>Daten · Export / Import</h2>
+          <p>JSON Backup, CSV Export/Import, Schema-CSV und optionaler Service Worker.</p>
+        </div>
+        <div class="row">
+          <button class="btn" type="button" id="btnHome">Wochen</button>
+          <button class="btn" type="button" id="btnDash">Auswertung</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="row">
+          <label class="small">CSV Trennzeichen
+            <select id="csvDelim"><option value=";">Semikolon (Excel CH/DE)</option><option value=",">Komma</option></select>
+          </label>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <button class="btn primary" type="button" id="btnCsvExport">CSV Daten exportieren</button>
+          <button class="btn" type="button" id="btnCsvSchema">CSV Schema exportieren</button>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <label class="btn" style="cursor:pointer;">
+            CSV importieren
+            <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none;">
+          </label>
+          <select id="csvMode" aria-label="CSV Import Modus">
+            <option value="merge">Merge (nur vorhandene Zeilen überschreiben)</option>
+            <option value="replace">Replace (alles ersetzen)</option>
+          </select>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <button class="btn" type="button" id="btnJsonExport">JSON exportieren</button>
+          <label class="btn" style="cursor:pointer;">
+            JSON importieren
+            <input type="file" id="jsonFile" accept="application/json,.json" style="display:none;">
+          </label>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <button class="btn" type="button" id="btnSW">Service Worker exportieren</button>
+          <button class="btn" type="button" id="btnDemo">Demo-Daten füllen</button>
+        </div>
+      </div>
+    `;
+
+    const side = document.createElement("section");
+    side.className = "card";
+    side.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>Import-Preview</h2>
+          <p>Mapping & Warnungen vom letzten CSV Import.</p>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="mappingPreview" id="preview">Noch kein Import durchgeführt.</div>
+      </div>
+    `;
+
+    wrap.appendChild(c);
+    wrap.appendChild(side);
+
+    c.querySelector("#btnHome").addEventListener("click", () => navTo("home"));
+    c.querySelector("#btnDash").addEventListener("click", () => navTo("dashboard"));
+
+    const delimSel = c.querySelector("#csvDelim");
+    c.querySelector("#btnCsvExport").addEventListener("click", () => exportCSVData(delimSel.value));
+    c.querySelector("#btnCsvSchema").addEventListener("click", () => exportCSVSchema(delimSel.value));
+
+    c.querySelector("#btnSW").addEventListener("click", () => exportServiceWorker());
+    c.querySelector("#btnDemo").addEventListener("click", () => fillDemoData());
+
+    c.querySelector("#btnJsonExport").addEventListener("click", () => {
+      downloadTextFile(`darmkur_backup_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state, null, 2), "application/json;charset=utf-8");
+      toast("JSON exportiert", "Backup-Datei wurde heruntergeladen.");
+    });
+
+    c.querySelector("#jsonFile").addEventListener("change", async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      try{
+        const txt = await f.text();
+        const obj = JSON.parse(txt);
+        state = migrateStorage(obj);
+        saveState();
+        render();
+        toast("JSON importiert", "Daten wurden übernommen.");
+      } catch(err){
+        toast("Fehler", `JSON Import fehlgeschlagen: ${err.message}`);
+      } finally { e.target.value = ""; }
+    });
+
+    c.querySelector("#csvFile").addEventListener("change", async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const mode = c.querySelector("#csvMode").value;
+      try{
+        await importCSV(f, mode);
+        updateImportPreview(side.querySelector("#preview"));
+      } catch(err){
+        toast("Fehler", `CSV Import fehlgeschlagen: ${err.message}`);
+      } finally { e.target.value = ""; }
+    });
+
+    updateImportPreview(side.querySelector("#preview"));
+    return wrap;
+  }
+
+  function updateImportPreview(el){
+    if (!el) return;
+    if (!lastImportReport){ el.textContent = "Noch kein Import durchgeführt."; return; }
+    const { headers, mapInfo, warnings } = lastImportReport;
+    const parts = [];
+    parts.push(`<div class="small">Headers (${headers.length}): <span class="mono">${headers.slice(0, 12).map(h=>h.replace(/</g,"&lt;")).join(" · ")}${headers.length>12?" …":""}</span></div>`);
+    parts.push(`<div class="divider"></div>`);
+    parts.push(`<div><span class="tag">ID-Mapping: ${mapInfo.direct.length}</span> <span class="tag">Label-Mapping: ${mapInfo.fallback.length}</span></div>`);
+    if (mapInfo.fallback.length){ parts.push(`<div class="small warnText" style="margin-top:8px;">Achtung: Label-Fallback genutzt (potenziell unsicher).</div>`); }
+    if (warnings && warnings.length){
+      parts.push(`<div class="divider"></div><div class="small warnText">Warnungen (Top ${Math.min(50,warnings.length)}):</div>`);
+      parts.push(`<ul class="small">${warnings.slice(0,50).map(w=>`<li>${w.replace(/</g,"&lt;")}</li>`).join("")}</ul>`);
+    }
+    el.innerHTML = parts.join("");
+  }
+}
+
+// --- App Init (entscheidend: sonst bleibt die Seite leer) ---
+function applyThemeFromStorage(){
+  const k = "darmkur_theme";
+  const v = localStorage.getItem(k);
+  if (v === "dark" || v === "light") document.documentElement.setAttribute("data-theme", v);
+}
+
+function toggleTheme(){
+  const cur = document.documentElement.getAttribute("data-theme") || "";
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("darmkur_theme", next);
+}
+
+function wireGlobalButtons(){
+  const btnTheme = document.getElementById("btnTheme");
+  if (btnTheme) btnTheme.addEventListener("click", toggleTheme);
+
+  const btnHelp = document.getElementById("btnHelp");
+  if (btnHelp) btnHelp.addEventListener("click", () => {
+    toast("Hinweise", "Wochen: Woche 1–12 wählen. In der Woche unten speichern/duplizieren. Unter 'Daten' findest du CSV/JSON Export/Import und optional sw.js für Offline.");
+  });
+
+  const tClose = document.getElementById("toastClose");
+  if (tClose) tClose.addEventListener("click", hideToast);
+}
+
+function init(){
+  try{ ensureManifest(); } catch(e){}
+  applyThemeFromStorage();
+  wireGlobalButtons();
+  updateSubtitle();
+  if (!route || !route.name) route = { name: "home", week: 1 };
+  render();
+}
+
+if (document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", init, { once: true });
+} else {
+  init();
+}
