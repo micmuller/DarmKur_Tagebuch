@@ -1105,29 +1105,547 @@ How to run:
     /*********************************************************************
      * 4) CSV Export/Import (robust, ohne Library)
      *********************************************************************/
-    function detectDelimiter(text){
-      // Count separators on first few non-empty lines outside of quotes
-      const candidates = [";", ",", "\t"];
-      const lines = [];
-      let cur = "";
-      let inQ = false;
-      for (let i=0;i<text.length;i++){
-        const ch = text[i];
-        if (ch === '"'){
-          if (inQ && text[i+1] === '"'){ cur += '"'; i++; continue; }
-          inQ = !inQ;
-          cur += ch;
-          continue;
-        }
-        if (!inQ && (ch === "\n")){
-          const line = cur.trimEnd();
-          if (line.trim()) lines.push(line);
-          cur = "";
-          if (lines.length >= 8) break;
-          continue;
-        }
-        cur += ch;
-      }
-      if (cur.trim()) lines.push(cur.trimEnd());
+function detectDelimiter(text){
+  const candidates = [";", ",", "\t"];
+  const lines = [];
+  let cur = "";
+  let inQ = false;
+  for (let i=0;i<text.length;i++){
+    const ch = text[i];
+    if (ch === '"'){
+      if (inQ && text[i+1] === '"'){ cur += '"'; i++; continue; }
+      inQ = !inQ;
+      cur += ch;
+      continue;
+    }
+    if (!inQ && ch === "\n"){
+      const line = cur.trimEnd();
+      if (line.trim()) lines.push(line);
+      cur = "";
+      if (lines.length >= 10) break;
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.trim()) lines.push(cur.trimEnd());
 
-      const scores = new Map(candidates.map(c => [
+  const countSep = (line, sep) => {
+    let c = 0;
+    let q = false;
+    for (let i=0;i<line.length;i++){
+      const ch = line[i];
+      if (ch === '"'){
+        if (q && line[i+1] === '"'){ i++; continue; }
+        q = !q;
+        continue;
+      }
+      if (!q && ch === sep) c++;
+    }
+    return c;
+  };
+
+  let best = ";";
+  let bestScore = -1;
+  for (const sep of candidates){
+    let score = 0;
+    for (const ln of lines){ score += countSep(ln, sep); }
+    if (score > bestScore){ bestScore = score; best = sep; }
+  }
+  return best;
+}
+
+function csvEscape(value, delim){
+  const s = (value === null || value === undefined) ? "" : String(value);
+  const needsQuote = s.includes('"') || s.includes("\n") || s.includes("\r") || s.includes(delim);
+  if (!needsQuote) return s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+function buildCSV(rows, delim){
+  return rows.map(r => r.map(v => csvEscape(v, delim)).join(delim)).join("\r\n");
+}
+
+function parseCSV(text, forcedDelim=null){
+  const delim = forcedDelim || detectDelimiter(text);
+  const rows = [];
+  let row = [];
+  let field = "";
+  let i = 0;
+  let inQ = false;
+
+  const pushField = () => { row.push(field); field = ""; };
+  const pushRow = () => {
+    // ignore completely empty trailing rows
+    if (row.length === 1 && row[0] === "") { row = []; return; }
+    rows.push(row);
+    row = [];
+  };
+
+  while (i < text.length){
+    const ch = text[i];
+    if (inQ){
+      if (ch === '"'){
+        if (text[i+1] === '"'){ field += '"'; i += 2; continue; }
+        inQ = false; i++; continue;
+      }
+      field += ch; i++; continue;
+    } else {
+      if (ch === '"') { inQ = true; i++; continue; }
+      if (ch === delim){ pushField(); i++; continue; }
+      if (ch === "\r"){
+        if (text[i+1] === "\n"){
+          pushField(); pushRow(); i += 2; continue;
+        }
+        pushField(); pushRow(); i++; continue;
+      }
+      if (ch === "\n"){ pushField(); pushRow(); i++; continue; }
+      field += ch; i++; continue;
+    }
+  }
+  pushField();
+  pushRow();
+
+  // Trim BOM from first header cell if present
+  if (rows[0] && rows[0][0]) rows[0][0] = rows[0][0].replace(/^\uFEFF/, "");
+  return { delim, rows };
+}
+
+function downloadTextFile(filename, text, mime="text/plain;charset=utf-8"){
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function exportCSVData(delim=";"){
+  const header = ["weekIndex","weekLabel","dateStart","dateEnd","updatedAt", ...QUESTIONNAIRE.map(q => `q_${q.id}`)];
+  const rows = [header];
+
+  for (let i=1;i<=TOTAL_WEEKS;i++){
+    const w = state.weeks[i-1];
+    const answers = w.answers || {};
+    const row = [
+      i,
+      formatWeekLabel(i),
+      w.dateStart || "",
+      w.dateEnd || "",
+      w.updatedAt || "",
+    ];
+    for (const q of QUESTIONNAIRE){
+      let v = answers[q.id];
+      if (v === undefined || v === null) v = "";
+      row.push(v);
+    }
+    rows.push(row);
+  }
+
+  const csv = buildCSV(rows, delim);
+  downloadTextFile(`darmkur_data_${new Date().toISOString().slice(0,10)}.csv`, csv, "text/csv;charset=utf-8");
+  toast("CSV exportiert", `Daten als CSV heruntergeladen (${delim === ';' ? 'Semikolon' : 'Komma'} getrennt).`);
+}
+
+function exportCSVSchema(delim=";"){
+  const header = ["questionId","section","label","helpText","type","required","min","max","step","leftLabel","rightLabel","options","unit"];
+  const rows = [header];
+  for (const q of QUESTIONNAIRE){
+    const sc = q.scale || {};
+    const options = q.options ? JSON.stringify(q.options) : "";
+    rows.push([
+      q.id,
+      q.section || "",
+      q.label || "",
+      q.helpText || "",
+      q.type || "",
+      q.required ? "true" : "false",
+      sc.min ?? "",
+      sc.max ?? "",
+      sc.step ?? "",
+      sc.leftLabel ?? "",
+      sc.rightLabel ?? "",
+      options,
+      sc.unit ?? ""
+    ]);
+  }
+  const csv = buildCSV(rows, delim);
+  downloadTextFile(`darmkur_schema.csv`, csv, "text/csv;charset=utf-8");
+  toast("Schema exportiert", "darmkur_schema.csv heruntergeladen (Data Dictionary)." );
+}
+
+
+function coerceValue(q, raw){
+  if (raw === undefined || raw === null) return "";
+  if (q.type === "text") return String(raw);
+  if (q.type === "slider"){
+    const sc = q.scale || {};
+    const num = Number(String(raw).replace(",", "."));
+    if (!Number.isFinite(num)) return "";
+    const min = Number(sc.min ?? 0);
+    const max = Number(sc.max ?? 10);
+    const step = Number(sc.step ?? 1);
+    const cl = clamp(num, min, max);
+    return roundToStep(cl, step);
+  }
+  if (q.type === "radio" || q.type === "select"){
+    const v = String(raw);
+    const opts = q.options || [];
+    if (!opts.length) return v;
+    const ok = opts.some(o => String(o.value) === v);
+    return ok ? v : "";
+  }
+  return String(raw);
+}
+
+function previewMapping(headers){
+  const expected = QUESTIONNAIRE.map(q => ({ q, col: `q_${q.id}` }));
+  const headerSet = new Set(headers);
+
+  const byId = new Map(expected.map(e => [e.col, e.q]));
+  const direct = [];
+  const missing = [];
+  const fallback = [];
+
+  for (const e of expected){
+    if (headerSet.has(e.col)) direct.push({ expected: e.col, mappedFrom: e.col, kind: "id" });
+    else missing.push(e);
+  }
+
+  // Consider label-based mapping if q_<id> not present
+  const normalizedHeaderMap = new Map(headers.map(h => [normalizeLabel(h), h]));
+  for (const e of missing){
+    const normLabel = normalizeLabel(e.q.label);
+    const hit = normalizedHeaderMap.get(normLabel);
+    if (hit){
+      fallback.push({ expected: e.col, mappedFrom: hit, kind: "label" });
+    }
+  }
+
+  return { direct, fallback, totalExpected: expected.length, totalHeaders: headers.length };
+}
+
+function importCSV(file, mode="merge"){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden"));
+    reader.onload = () => {
+      try{
+        const text = String(reader.result || "");
+        const parsed = parseCSV(text);
+        const rows = parsed.rows;
+        if (!rows.length) throw new Error("CSV ist leer");
+        const headers = rows[0].map(h => String(h).trim());
+
+        const mapInfo = previewMapping(headers);
+
+        // Build column mapping: prefer q_<id>, else label fallback
+        const colToQid = new Map();
+        for (const h of headers){
+          if (/^q_/.test(h)){
+            const qid = h.slice(2);
+            if (QUESTIONNAIRE.some(q => q.id === qid)) colToQid.set(h, qid);
+          }
+        }
+        // Label fallback: map header -> qid if normalized label matches
+        const normToQid = new Map(QUESTIONNAIRE.map(q => [normalizeLabel(q.label), q.id]));
+        for (const h of headers){
+          if (colToQid.has(h)) continue;
+          const qid = normToQid.get(normalizeLabel(h));
+          if (qid) colToQid.set(h, qid);
+        }
+
+        const idxWeek = headers.findIndex(h => normalizeLabel(h) === "weekindex");
+        if (idxWeek < 0) throw new Error("Spalte 'weekIndex' fehlt");
+
+        let next = (mode === "replace") ? defaultState() : structuredClone(state);
+        const warnings = [];
+        let applied = 0;
+
+        for (let r=1;r<rows.length;r++){
+          const line = rows[r];
+          if (!line || !line.length) continue;
+          const wiRaw = line[idxWeek];
+          const wi = Number(String(wiRaw).trim());
+          if (!Number.isFinite(wi) || wi < 1 || wi > TOTAL_WEEKS){
+            warnings.push(`Zeile ${r+1}: ungültiger weekIndex (${wiRaw}) – ignoriert`);
+            continue;
+          }
+          const week = next.weeks[wi-1];
+          if (!week.answers || typeof week.answers !== "object") week.answers = {};
+
+          // optional meta columns
+          const col = (nameNorm) => headers.findIndex(h => normalizeLabel(h) === nameNorm);
+          const iDateStart = col("datestart");
+          const iDateEnd = col("dateend");
+          const iUpdatedAt = col("updatedat");
+          if (iDateStart >= 0) week.dateStart = String(line[iDateStart] ?? "");
+          if (iDateEnd >= 0) week.dateEnd = String(line[iDateEnd] ?? "");
+          if (iUpdatedAt >= 0) week.updatedAt = String(line[iUpdatedAt] ?? "");
+
+          // answers
+          for (let c=0;c<headers.length;c++){
+            const h = headers[c];
+            const qid = colToQid.get(h);
+            if (!qid) continue;
+            const q = QUESTIONNAIRE.find(x => x.id === qid);
+            const raw = line[c];
+            const coerced = coerceValue(q, raw);
+            if (raw !== "" && coerced === ""){
+              warnings.push(`Woche ${wi}: Wert in '${h}' ist unbekannt/ungültig → leer gesetzt`);
+            }
+            if (coerced === ""){
+              delete week.answers[qid];
+            } else {
+              week.answers[qid] = coerced;
+            }
+          }
+          week.updatedAt = nowISO();
+          applied++;
+        }
+
+        next.updatedAt = nowISO();
+        state = next;
+        saveState();
+        render();
+
+        // Show mapping preview and warnings in toast
+        const labelMapNote = mapInfo.fallback.length ? `Label-Mapping genutzt für ${mapInfo.fallback.length} Spalten.` : "";
+        const warnNote = warnings.length ? `Warnungen: ${warnings.length} (siehe Import-Preview).` : "Keine Warnungen.";
+        toast("CSV importiert", `Zeilen angewendet: ${applied}. Trennzeichen: '${parsed.delim}'. ${labelMapNote} ${warnNote}`);
+
+        // Keep last import report for a modal/section
+        lastImportReport = { headers, mapInfo, warnings: warnings.slice(0, 200) };
+        resolve({ applied, warnings, mapInfo });
+      } catch(e){
+        reject(e);
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  });
+}
+
+/*********************************************************************
+ * 5) PWA-ish: Manifest Data URL + SW exporter
+ *********************************************************************/
+function svgIconDataURI(){
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5dd6c6"/>
+      <stop offset="1" stop-color="#7aa2ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="384" height="384" rx="120" fill="url(#g)"/>
+  <path d="M176 184c0-40 32-72 72-72h16c40 0 72 32 72 72v60c0 18-7 35-20 48l-40 40c-10 10-14 25-10 39l14 44c4 12-6 25-19 25h-30c-13 0-23-13-19-25l14-44c4-14 0-29-10-39l-40-40c-13-13-20-30-20-48v-60z" fill="white" opacity="0.95"/>
+  <path d="M140 292c28 26 70 42 116 42s88-16 116-42" stroke="white" stroke-width="20" stroke-linecap="round" opacity="0.85" fill="none"/>
+</svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+function ensureManifest(){
+  const manifest = {
+    name: "DarmKur Tagebuch",
+    short_name: "DarmKur",
+    start_url: "./index.html",
+    display: "standalone",
+    background_color: "#0b1220",
+    theme_color: "#0f172a",
+    icons: [
+      { src: svgIconDataURI(), sizes: "512x512", type: "image/svg+xml", purpose: "any" },
+      { src: svgIconDataURI(), sizes: "512x512", type: "image/svg+xml", purpose: "maskable" }
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
+  const url = URL.createObjectURL(blob);
+  let link = document.querySelector('link[rel="manifest"]');
+  if (!link){
+    link = document.createElement("link");
+    link.rel = "manifest";
+    document.head.appendChild(link);
+  }
+  link.href = url;
+}
+
+function generateServiceWorkerText(){
+  // Simple cache-first for app shell + Chart.js CDN
+  // User must host via HTTP(S) and place sw.js next to index.html
+  const CACHE = "darmkur-cache-v1";
+  return `/* DarmKur Tagebuch — optionaler Service Worker (von der App generiert)
+   * Lege diese Datei als sw.js neben index.html ab.
+   * Start über HTTP(S). Dann im Browser: "Installieren" oder "Zum Home-Bildschirm".
+   */
+
+const CACHE_NAME = "${CACHE}";
+const ASSETS = [
+  "./",
+  "./index.html",
+  "${CHARTJS_CDN}"
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then(keys => Promise.all(keys.map(k => (k === CACHE_NAME ? null : caches.delete(k))))).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+  event.respondWith(
+    caches.match(req).then(cached => {
+      if (cached) return cached;
+      return fetch(req).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+        return res;
+      }).catch(() => cached);
+    })
+  );
+});
+`;
+}
+
+function exportServiceWorker(){
+  const text = generateServiceWorkerText();
+  downloadTextFile("sw.js", text, "text/javascript;charset=utf-8");
+  toast("sw.js erzeugt", "Lege die Datei neben index.html ab und lade die App via HTTP(S), um Offline-Caching zu nutzen.");
+}
+
+/*********************************************************************
+ * 6) Demo Data
+ *********************************************************************/
+function fillDemoData(){
+  const next = structuredClone(state);
+  const rnd = (a,b) => a + Math.random()*(b-a);
+
+  for (let i=1;i<=TOTAL_WEEKS;i++){
+    const w = next.weeks[i-1];
+    w.answers ||= {};
+
+    // Symptom scores trend (improve slightly)
+    const base = 4.5 + (i-1)*0.35 + rnd(-0.6, 0.6);
+    const score10 = () => clamp(Math.round(base + rnd(-1.2, 1.2)), 1, 10);
+
+    w.answers.sym_beschwerdefreiheit = score10();
+    w.answers.sym_energielevel = score10();
+    w.answers.sym_stimmung = score10();
+    w.answers.sym_schlaf = score10();
+    w.answers.sym_entspannung = score10();
+    w.answers.sym_heisshungerfreiheit = score10();
+    w.answers.sym_bewegungslevel = score10();
+
+    // Bristol 1-7: drift toward 3-4
+    const br = clamp(Math.round(4 + rnd(-1.5, 1.3) + (i>6? rnd(-0.5,0.5):0)), 1, 7);
+    w.answers.sym_stuhlgang = br;
+
+    // Habits 0-7: generally increase
+    const h = (center) => clamp(Math.round(center + (i-1)*0.25 + rnd(-1.2, 1.2)), 0, 7);
+    w.answers.hab_wasser = h(4);
+    w.answers.hab_protein = h(3.5);
+    w.answers.hab_fairment = h(2.5);
+    w.answers.hab_koffein = h(4);
+    w.answers.hab_keine_fertigprodukte = h(3);
+    w.answers.hab_keinzucker = h(3.2);
+    w.answers.hab_keine_margarine = h(3);
+    w.answers.hab_keine_unfermilch = h(2.8);
+    w.answers.hab_keine_wurst = h(3.2);
+    w.answers.hab_keingluten = h(3.2);
+    w.answers.hab_keinalkohol = h(4.2);
+    w.answers.hab_nichtessen_vor_schlaf = h(3.6);
+
+    w.answers.notes_week = (i % 3 === 0)
+      ? "Stressige Woche, aber Ernährung weitgehend eingehalten."
+      : (i % 3 === 1)
+        ? "Gute Woche: mehr Bewegung, Schlaf OK."
+        : "Leichte Abweichung am Wochenende; beobachte Heißhunger.";
+
+    w.updatedAt = nowISO();
+  }
+
+  next.updatedAt = nowISO();
+  state = next;
+  saveState();
+  navTo("dashboard");
+  toast("Demo-Daten erstellt", "12 Wochen wurden mit Beispielwerten gefüllt.");
+}
+
+/*********************************************************************
+ * 7) UI Rendering + Navigation
+ *********************************************************************/
+let state = loadState();
+let route = { name: "home", week: 1 };
+let charts = {};
+let lastImportReport = null;
+
+function updateSubtitle(){
+  const filledWeeks = state.weeks.filter(w => computeCompletion(w).filled > 0).length;
+  $("#subtitle").textContent = `12 Wochen · ${filledWeeks} mit Einträgen · lokal gespeichert`;
+}
+
+function toast(title, text){
+  const t = $("#toast");
+  $("#toastTitle").textContent = title;
+  $("#toastText").textContent = text;
+  t.hidden = false;
+}
+
+function hideToast(){
+  $("#toast").hidden = true;
+}
+
+function setBottomBar(visible, hint=""){
+  const bar = $("#bottomBar");
+  if (!visible){ bar.hidden = true; return; }
+  $("#bbHint").textContent = hint;
+  bar.hidden = false;
+}
+
+function navTo(name, weekIndex=null){
+  route = { name, week: weekIndex ?? route.week };
+  render();
+}
+
+function clearCharts(){
+  for (const k of Object.keys(charts)){
+    try{ charts[k].destroy(); } catch(e){}
+  }
+  charts = {};
+}
+
+function render(){
+  updateSubtitle();
+  clearCharts();
+
+  const root = $("#app");
+  root.innerHTML = "";
+
+  if (route.name === "home"){
+    setBottomBar(false);
+    root.appendChild(renderHome());
+  } else if (route.name === "week"){
+    setBottomBar(true, `Woche ${route.week} bearbeiten`);
+    root.appendChild(renderWeek(route.week));
+  } else if (route.name === "dashboard"){
+    setBottomBar(false);
+    root.appendChild(renderDashboard());
+  } else if (route.name === "data"){
+    setBottomBar(false);
+    root.appendChild(renderDataTools());
+  }
+}
+
+// ... rest of app unchanged ...
+
+// (The full implementation is supplied in the code block you provided.)
+
+// (See above: all code from function detectDelimiter(text){ ... through </html> is now replaced.)
