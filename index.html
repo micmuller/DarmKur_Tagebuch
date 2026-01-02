@@ -7,7 +7,7 @@ How to run:
 - Hinweis: Ohne Service Worker sind CDN-Ressourcen (Chart.js) ggf. nicht offline verfügbar.
 -->
   <!-- Version: v0.9.1: Render fixed -->
-
+  <!-- Version: v0.9.2: Versioning und fixes -->
 
 <!doctype html>
 <html lang="de">
@@ -159,6 +159,60 @@ How to run:
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .versionBadge{
+      display:inline-flex;
+      align-items:center;
+      padding: 3px 8px;
+      margin-left: 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.08);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      vertical-align: middle;
+      user-select:none;
+    }
+    html[data-theme="light"] .versionBadge{
+      border-color: rgba(15,23,42,0.16);
+      background: rgba(15,23,42,0.06);
+    }
+    .fatalOverlay{
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .fatalOverlay.show{ display:flex; }
+    .fatalCard{
+      max-width: 980px;
+      width: 100%;
+      border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.55);
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+    .fatalCard h3{ margin:0 0 6px; font-size: 14px; font-weight: 900; letter-spacing: -0.01em; }
+    .fatalCard p{ margin:0 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+    .fatalCard pre{
+      margin:0;
+      padding: 10px;
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      overflow:auto;
+      max-height: 50vh;
+      font-size: 12px;
+      color: var(--text);
     }
     .subtitle{
       margin: 2px 0 0;
@@ -678,7 +732,7 @@ How to run:
           </svg>
         </div>
         <div class="titlewrap">
-          <p class="apptitle">DarmKur Tagebuch</p>
+          <p class="apptitle">DarmKur Tagebuch <span class="versionBadge" id="versionBadge">v0.9.2</span></p>
           <p class="subtitle" id="subtitle">12 Wochen · lokal gespeichert · Charts mit Chart.js</p>
         </div>
       </div>
@@ -748,6 +802,16 @@ How to run:
       <button class="x" id="toastClose" aria-label="Toast schließen">OK</button>
     </div>
   </div>
+  <div class="fatalOverlay" id="fatalOverlay" aria-live="assertive" aria-label="Fehleranzeige">
+    <div class="fatalCard" role="alert">
+      <h3>App konnte nicht starten</h3>
+      <p>Es ist ein JavaScript-Fehler aufgetreten. Kopiere die Details unten (oder die Browser-Konsole) und sende sie mir, dann fixen wir das sofort.</p>
+      <pre id="fatalText"></pre>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" type="button" id="fatalClose">Schließen</button>
+      </div>
+    </div>
+  </div>
 
   <script>
   (() => {
@@ -761,6 +825,7 @@ How to run:
      *    - Freitext: “Was mir sonst noch aufgefallen ist” (sichtbar als Überschrift)
      *********************************************************************/
     const STORAGE_KEY = "darmkur_tagebuch_vault";
+    const APP_VERSION = "v0.9.1";
     const STORAGE_VERSION = 1;
     const TOTAL_WEEKS = 12;
 
@@ -2259,12 +2324,60 @@ function wireGlobalButtons(){
 }
 
 function init(){
-  try{ ensureManifest(); } catch(e){}
+  // Global error handlers (helps debug blank page)
+  const showFatal = (errLike) => {
+    try{
+      const ov = document.getElementById("fatalOverlay");
+      const pre = document.getElementById("fatalText");
+      if (!ov || !pre) return;
+      const msg = (errLike && errLike.message) ? errLike.message : String(errLike);
+      const stack = (errLike && errLike.stack) ? "\n\n" + errLike.stack : "";
+      pre.textContent = msg + stack;
+      ov.classList.add("show");
+    } catch(e){}
+  };
+
+  window.addEventListener("error", (ev) => {
+    // SyntaxErrors that prevent script execution won't be caught here, but runtime errors will.
+    const err = ev.error || new Error(ev.message || "Unbekannter Fehler");
+    console.error("[DarmKur] window.error", err);
+    showFatal(err);
+  });
+  window.addEventListener("unhandledrejection", (ev) => {
+    const err = ev.reason instanceof Error ? ev.reason : new Error(String(ev.reason));
+    console.error("[DarmKur] unhandledrejection", err);
+    showFatal(err);
+  });
+
+  const closeBtn = document.getElementById("fatalClose");
+  if (closeBtn){
+    closeBtn.addEventListener("click", () => {
+      const ov = document.getElementById("fatalOverlay");
+      if (ov) ov.classList.remove("show");
+    });
+  }
+
+  // Version badge
+  const vb = document.getElementById("versionBadge");
+  if (vb) vb.textContent = APP_VERSION;
+
+  try{ ensureManifest(); } catch(e){ console.warn("[DarmKur] ensureManifest failed", e); }
   applyThemeFromStorage();
   wireGlobalButtons();
   updateSubtitle();
   if (!route || !route.name) route = { name: "home", week: 1 };
-  render();
+
+  console.debug("[DarmKur] init", { version: APP_VERSION, route });
+
+  try{
+    render();
+    console.debug("[DarmKur] render ok");
+  } catch(e){
+    console.error("[DarmKur] render failed", e);
+    showFatal(e);
+    // also show a toast so it's visible even if overlay styling fails
+    try{ toast("Fehler", e.message || String(e)); } catch(_){}
+  }
 }
 
 if (document.readyState === "loading"){
@@ -2272,3 +2385,4 @@ if (document.readyState === "loading"){
 } else {
   init();
 }
+})();
