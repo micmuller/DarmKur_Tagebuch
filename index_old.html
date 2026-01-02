@@ -6,7 +6,7 @@ How to run:
   und dann in der App “Service Worker exportieren” nutzen (sw.js herunterladen und im gleichen Ordner ablegen).
 - Hinweis: Ohne Service Worker sind CDN-Ressourcen (Chart.js) ggf. nicht offline verfügbar.
 -->
-  <!-- Version: v0.9.9: Daily entries + weekly/monthly aggregates -->
+  <!-- Version: v0.9.7: Fix renderHome scope (strict-mode) + CSV Export/Import -->
   <!-- Version: v0.9.7 -->
 
 <!doctype html>
@@ -736,7 +736,7 @@ How to run:
           </svg>
         </div>
         <div class="titlewrap">
-          <p class="apptitle">DarmKur Tagebuch <span class="versionBadge" id="versionBadge">v0.9.9</span></p>
+          <p class="apptitle">DarmKur Tagebuch <span class="versionBadge" id="versionBadge">v0.9.7</span></p>
           <p class="subtitle" id="subtitle">12 Wochen · lokal gespeichert · Charts mit Chart.js</p>
         </div>
       </div>
@@ -825,11 +825,11 @@ How to run:
      * 1) Aus Screenshots rekonstruierte Inhalte (QUESTIONNAIRE)
      *    - Symptomtagebuch: Skalen 1–10 (1=schlecht, 10=perfekt)
      *    - Stuhlgang: 1–7 (Bristol Stuhl-Skala, Referenz im Text)
-     *    - Gewohnheiten-Checkliste: tägliche Kreise → Tageswert als 0–7 Tage erfüllt
+     *    - Gewohnheiten-Checkliste: tägliche Kreise → Wochenwert als 0–7 Tage erfüllt
      *    - Freitext: “Was mir sonst noch aufgefallen ist” (sichtbar als Überschrift)
      *********************************************************************/
     const STORAGE_KEY = "darmkur_tagebuch_vault";
-    const APP_VERSION = "v0.9.9";
+    const APP_VERSION = "v0.9.7";
     const STORAGE_VERSION = 1;
     const TOTAL_WEEKS = 12;
 
@@ -851,7 +851,7 @@ How to run:
         id: "sym_energielevel",
         section: "Symptomtagebuch",
         label: "Energielevel",
-        helpText: "1=schlecht, 10=perfekt (Tageswert).",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
         type: "slider",
         required: false,
         scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
@@ -860,7 +860,7 @@ How to run:
         id: "sym_stimmung",
         section: "Symptomtagebuch",
         label: "Stimmung",
-        helpText: "1=schlecht, 10=perfekt (Tageswert).",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
         type: "slider",
         required: false,
         scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
@@ -869,7 +869,7 @@ How to run:
         id: "sym_schlaf",
         section: "Symptomtagebuch",
         label: "Schlaf",
-        helpText: "1=schlecht, 10=perfekt (Tageswert).",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
         type: "slider",
         required: false,
         scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
@@ -878,7 +878,7 @@ How to run:
         id: "sym_entspannung",
         section: "Symptomtagebuch",
         label: "Zeit für Entspannung",
-        helpText: "1=schlecht, 10=perfekt (Tageswert).",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
         type: "slider",
         required: false,
         scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
@@ -887,7 +887,7 @@ How to run:
         id: "sym_stuhlgang",
         section: "Symptomtagebuch",
         label: "Stuhlgang",
-        helpText: "Bewertung 1–7; orientiere dich an der Bristol Stuhl-Skala (im Buch wird auf S.40 verwiesen). Hier als Tageswert.",
+        helpText: "Bewertung 1–7; orientiere dich an der Bristol Stuhl-Skala (im Buch wird auf S.40 verwiesen). Hier als Wochenwert.",
         type: "slider",
         required: false,
         scale: { min: 1, max: 7, step: 1, leftLabel: "1", rightLabel: "7", unit: "" }
@@ -896,7 +896,7 @@ How to run:
         id: "sym_heisshungerfreiheit",
         section: "Symptomtagebuch",
         label: "Heißhungerfreiheit",
-        helpText: "1=schlecht, 10=perfekt (Tageswert).",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
         type: "slider",
         required: false,
         scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
@@ -905,7 +905,7 @@ How to run:
         id: "sym_bewegungslevel",
         section: "Symptomtagebuch",
         label: "Bewegungslevel",
-        helpText: "1=schlecht, 10=perfekt (Tageswert).",
+        helpText: "1=schlecht, 10=perfekt (Wochenwert).",
         type: "slider",
         required: false,
         scale: { min: 1, max: 10, step: 1, leftLabel: "1 = schlecht", rightLabel: "10 = perfekt" }
@@ -1071,17 +1071,14 @@ How to run:
     function formatWeekLabel(i){ return `Woche ${i}`; }
 
     function computeCompletion(week){
-      const days = (week?.days && Array.isArray(week.days)) ? week.days : [];
+      const answers = week?.answers || {};
       let total = 0, filled = 0;
-      for (let d=0; d<7; d++){
-        const day = days[d];
-        const answers = day?.answers || {};
-        for (const q of QUESTIONNAIRE){
-          if (q.type === "text" && q.id === "notes_week") continue;
-          total++;
-          const v = answers[q.id];
-          if (v !== null && v !== undefined && v !== "") filled++;
-        }
+      for (const q of QUESTIONNAIRE){
+        // Notizen zählen als optionaler Bonus: nicht in Completion rein, damit "unvollständig" nicht zu streng ist
+        if (q.type === "text" && q.id === "notes_week") continue;
+        total++;
+        const v = answers[q.id];
+        if (v !== null && v !== undefined && v !== "") filled++;
       }
       const pct = total ? Math.round((filled / total) * 100) : 0;
       return { total, filled, pct };
@@ -1093,22 +1090,13 @@ How to run:
     function defaultState(){
       const weeks = [];
       for (let i = 1; i <= TOTAL_WEEKS; i++){
-        const days = [];
-        for (let d = 1; d <= 7; d++){
-          days.push({
-            dayIndex: d,
-            date: "",        // optional: user can set, otherwise blank
-            updatedAt: "",
-            answers: {}
-          });
-        }
         weeks.push({
           weekIndex: i,
           dateStart: "",
           dateEnd: "",
           updatedAt: "",
-          days,
-          notes: "" // reserved (notes are stored per-day in answers[notes_week])
+          answers: {},
+          notes: "" // reserved (we also store notes in answers[notes_week])
         });
       }
       return {
@@ -1120,71 +1108,50 @@ How to run:
     }
 
     function migrateStorage(obj){
+      // Future-ready: handle migrations by version number
       if (!obj || typeof obj !== "object") return defaultState();
 
       const v = Number(obj.version || 0);
-      const fresh = defaultState();
-
-      // helper to ensure days
-      const ensureDays = (w) => {
-        if (!Array.isArray(w.days) || w.days.length !== 7){
-          w.days = [];
-          for (let d=1; d<=7; d++){
-            w.days.push({ dayIndex:d, date:"", updatedAt:"", answers:{} });
-          }
-        } else {
-          for (let d=1; d<=7; d++){
-            const day = w.days[d-1] || (w.days[d-1] = { dayIndex:d, date:"", updatedAt:"", answers:{} });
-            if (!day.answers || typeof day.answers !== "object") day.answers = {};
-            if (day.date == null) day.date = "";
-            if (day.updatedAt == null) day.updatedAt = "";
-            day.dayIndex = d;
-          }
+      if (v === STORAGE_VERSION){
+        // Ensure 12 weeks exist
+        const base = structuredClone(obj);
+        if (!Array.isArray(base.weeks)) base.weeks = [];
+        const existing = new Map(base.weeks.map(w => [Number(w.weekIndex), w]));
+        const weeks = [];
+        for (let i = 1; i <= TOTAL_WEEKS; i++){
+          const w = existing.get(i) || { weekIndex: i, dateStart:"", dateEnd:"", updatedAt:"", answers:{}, notes:"" };
+          if (!w.answers || typeof w.answers !== "object") w.answers = {};
+          if (w.dateStart == null) w.dateStart = "";
+          if (w.dateEnd == null) w.dateEnd = "";
+          if (w.updatedAt == null) w.updatedAt = "";
+          weeks.push(w);
         }
-      };
+        base.weeks = weeks;
+        if (!base.createdAt) base.createdAt = nowISO();
+        if (!base.updatedAt) base.updatedAt = nowISO();
+        base.version = STORAGE_VERSION;
+        return base;
+      }
 
+      // Simple migration path from unknown/older: keep best-effort weeks/answers
+      const fresh = defaultState();
       try{
         if (Array.isArray(obj.weeks)){
-          for (const w0 of obj.weeks){
-            const idx = Number(w0.weekIndex);
+          for (const w of obj.weeks){
+            const idx = Number(w.weekIndex);
             if (!idx || idx < 1 || idx > TOTAL_WEEKS) continue;
-            const w = fresh.weeks[idx-1];
-
-            w.dateStart = String(w0.dateStart ?? "");
-            w.dateEnd = String(w0.dateEnd ?? "");
-            w.updatedAt = String(w0.updatedAt ?? "");
-
-            ensureDays(w);
-
-            // New schema: copy per-day answers
-            if (Array.isArray(w0.days) && w0.days.length){
-              for (const d0 of w0.days){
-                const di = Number(d0.dayIndex);
-                if (!di || di<1 || di>7) continue;
-                const day = w.days[di-1];
-                day.date = String(d0.date ?? "");
-                day.updatedAt = String(d0.updatedAt ?? "");
-                if (d0.answers && typeof d0.answers === "object"){
-                  day.answers = structuredClone(d0.answers);
-                }
-              }
-            }
-
-            // Old schema fallback: w0.answers existed at week level → map to day 1
-            if (w0.answers && typeof w0.answers === "object" && !Array.isArray(w0.days)){
-              const day1 = w.days[0];
-              day1.answers = Object.assign({}, day1.answers, structuredClone(w0.answers));
-              day1.updatedAt = day1.updatedAt || String(w0.updatedAt ?? "");
+            const target = fresh.weeks[idx - 1];
+            target.dateStart = String(w.dateStart ?? "");
+            target.dateEnd = String(w.dateEnd ?? "");
+            target.updatedAt = String(w.updatedAt ?? "");
+            if (w.answers && typeof w.answers === "object"){
+              target.answers = structuredClone(w.answers);
             }
           }
         }
         fresh.createdAt = String(obj.createdAt ?? fresh.createdAt);
         fresh.updatedAt = String(obj.updatedAt ?? fresh.updatedAt);
-      } catch(e){
-        // ignore and keep defaults
-      }
-
-      fresh.version = STORAGE_VERSION;
+      } catch(e){ /* ignore */ }
       return fresh;
     }
 
@@ -1328,34 +1295,30 @@ function downloadTextFile(filename, text, mime="text/plain;charset=utf-8"){
 }
 
 function exportCSVData(delim=";"){
-  const header = ["weekIndex","dayIndex","dayLabel","date","updatedAt", ...QUESTIONNAIRE.map(q => `q_${q.id}`)];
+  const header = ["weekIndex","weekLabel","dateStart","dateEnd","updatedAt", ...QUESTIONNAIRE.map(q => `q_${q.id}`)];
   const rows = [header];
 
-  for (let wi=1; wi<=TOTAL_WEEKS; wi++){
-    const w = state.weeks[wi-1];
-    const days = (w.days && Array.isArray(w.days)) ? w.days : [];
-    for (let di=1; di<=7; di++){
-      const day = days[di-1] || { dayIndex: di, date:"", updatedAt:"", answers:{} };
-      const answers = day.answers || {};
-      const row = [
-        wi,
-        di,
-        `Tag ${di}`,
-        day.date || "",
-        day.updatedAt || ""
-      ];
-      for (const q of QUESTIONNAIRE){
-        let v = answers[q.id];
-        if (v === undefined || v === null) v = "";
-        row.push(v);
-      }
-      rows.push(row);
+  for (let i=1;i<=TOTAL_WEEKS;i++){
+    const w = state.weeks[i-1];
+    const answers = w.answers || {};
+    const row = [
+      i,
+      formatWeekLabel(i),
+      w.dateStart || "",
+      w.dateEnd || "",
+      w.updatedAt || "",
+    ];
+    for (const q of QUESTIONNAIRE){
+      let v = answers[q.id];
+      if (v === undefined || v === null) v = "";
+      row.push(v);
     }
+    rows.push(row);
   }
 
   const csv = buildCSV(rows, delim);
-  downloadTextFile(`darmkur_data_daily_${new Date().toISOString().slice(0,10)}.csv`, csv, "text/csv;charset=utf-8");
-  toast("CSV exportiert", `Tagesdaten als CSV heruntergeladen (${delim === ';' ? 'Semikolon' : 'Komma'} getrennt).`);
+  downloadTextFile(`darmkur_data_${new Date().toISOString().slice(0,10)}.csv`, csv, "text/csv;charset=utf-8");
+  toast("CSV exportiert", `Daten als CSV heruntergeladen (${delim === ';' ? 'Semikolon' : 'Komma'} getrennt).`);
 }
 
 function exportCSVSchema(delim=";"){
@@ -1458,6 +1421,7 @@ function importCSV(file, mode="merge"){
             if (QUESTIONNAIRE.some(q => q.id === qid)) colToQid.set(h, qid);
           }
         }
+        // Label fallback: map header -> qid if normalized label matches
         const normToQid = new Map(QUESTIONNAIRE.map(q => [normalizeLabel(q.label), q.id]));
         for (const h of headers){
           if (colToQid.has(h)) continue;
@@ -1467,12 +1431,6 @@ function importCSV(file, mode="merge"){
 
         const idxWeek = headers.findIndex(h => normalizeLabel(h) === "weekindex");
         if (idxWeek < 0) throw new Error("Spalte 'weekIndex' fehlt");
-
-        const idxDay = headers.findIndex(h => normalizeLabel(h) === "dayindex"); // optional
-
-        const findCol = (nameNorm) => headers.findIndex(h => normalizeLabel(h) === nameNorm);
-        const iDate = findCol("date");
-        const iUpdatedAt = findCol("updatedat");
 
         let next = (mode === "replace") ? defaultState() : structuredClone(state);
         const warnings = [];
@@ -1487,27 +1445,19 @@ function importCSV(file, mode="merge"){
             warnings.push(`Zeile ${r+1}: ungültiger weekIndex (${wiRaw}) – ignoriert`);
             continue;
           }
-
-          const diRaw = idxDay >= 0 ? line[idxDay] : "1";
-          let di = Number(String(diRaw).trim() || "1");
-          if (!Number.isFinite(di) || di < 1 || di > 7){
-            warnings.push(`Zeile ${r+1}: ungültiger dayIndex (${diRaw}) – setze 1`);
-            di = 1;
-          }
-
           const week = next.weeks[wi-1];
-          if (!Array.isArray(week.days) || week.days.length !== 7){
-            week.days = [];
-            for (let d=1; d<=7; d++) week.days.push({ dayIndex:d, date:"", updatedAt:"", answers:{} });
-          }
+          if (!week.answers || typeof week.answers !== "object") week.answers = {};
 
-          const day = week.days[di-1] || (week.days[di-1] = { dayIndex:di, date:"", updatedAt:"", answers:{} });
-          day.dayIndex = di;
-          if (!day.answers || typeof day.answers !== "object") day.answers = {};
+          // optional meta columns
+          const col = (nameNorm) => headers.findIndex(h => normalizeLabel(h) === nameNorm);
+          const iDateStart = col("datestart");
+          const iDateEnd = col("dateend");
+          const iUpdatedAt = col("updatedat");
+          if (iDateStart >= 0) week.dateStart = String(line[iDateStart] ?? "");
+          if (iDateEnd >= 0) week.dateEnd = String(line[iDateEnd] ?? "");
+          if (iUpdatedAt >= 0) week.updatedAt = String(line[iUpdatedAt] ?? "");
 
-          if (iDate >= 0) day.date = String(line[iDate] ?? "");
-          if (iUpdatedAt >= 0) day.updatedAt = String(line[iUpdatedAt] ?? "");
-
+          // answers
           for (let c=0;c<headers.length;c++){
             const h = headers[c];
             const qid = colToQid.get(h);
@@ -1516,16 +1466,14 @@ function importCSV(file, mode="merge"){
             const raw = line[c];
             const coerced = coerceValue(q, raw);
             if (raw !== "" && coerced === ""){
-              warnings.push(`W${wi} T${di}: Wert in '${h}' ist ungültig → leer gesetzt`);
+              warnings.push(`Woche ${wi}: Wert in '${h}' ist unbekannt/ungültig → leer gesetzt`);
             }
             if (coerced === ""){
-              delete day.answers[qid];
+              delete week.answers[qid];
             } else {
-              day.answers[qid] = coerced;
+              week.answers[qid] = coerced;
             }
           }
-
-          day.updatedAt = nowISO();
           week.updatedAt = nowISO();
           applied++;
         }
@@ -1535,10 +1483,12 @@ function importCSV(file, mode="merge"){
         saveState();
         render();
 
+        // Show mapping preview and warnings in toast
         const labelMapNote = mapInfo.fallback.length ? `Label-Mapping genutzt für ${mapInfo.fallback.length} Spalten.` : "";
         const warnNote = warnings.length ? `Warnungen: ${warnings.length} (siehe Import-Preview).` : "Keine Warnungen.";
         toast("CSV importiert", `Zeilen angewendet: ${applied}. Trennzeichen: '${parsed.delim}'. ${labelMapNote} ${warnNote}`);
 
+        // Keep last import report for a modal/section
         lastImportReport = { headers, mapInfo, warnings: warnings.slice(0, 200) };
         resolve({ applied, warnings, mapInfo });
       } catch(e){
@@ -1881,13 +1831,6 @@ if (typeof renderHome !== "function"){
 if (typeof renderWeek !== "function"){
   renderWeek = function renderWeek(weekIndex){
     const w = state.weeks[weekIndex-1];
-    if (!Array.isArray(w.days) || w.days.length !== 7){
-      w.days = [];
-      for (let d=1; d<=7; d++) w.days.push({ dayIndex:d, date:"", updatedAt:"", answers:{} });
-    }
-
-    let activeDay = 1;
-
     const wrap = document.createElement("div");
     wrap.className = "grid two";
 
@@ -1896,8 +1839,8 @@ if (typeof renderWeek !== "function"){
     cForm.innerHTML = `
       <div class="hd">
         <div>
-          <h2>${formatWeekLabel(weekIndex)} · Tages-Eingaben</h2>
-          <p>Wähle einen Tag (1–7) und erfasse die Werte. Wöchentliche/monatliche Summen/Ø siehst du in der Auswertung.</p>
+          <h2>${formatWeekLabel(weekIndex)} · Eingabe</h2>
+          <p>Erfasse die Werte als Wochen-Score (z.B. Durchschnitt oder subjektiver Eindruck).</p>
         </div>
         <div class="row">
           <button class="btn" type="button" id="btnWeekDelete">Woche löschen</button>
@@ -1905,15 +1848,8 @@ if (typeof renderWeek !== "function"){
       </div>
       <div class="bd">
         <div class="row">
-          <label class="small">Woche Startdatum<br><input type="text" id="dateStart" placeholder="optional"></label>
-          <label class="small">Woche Enddatum<br><input type="text" id="dateEnd" placeholder="optional"></label>
-        </div>
-        <div class="divider"></div>
-        <div class="tabs" id="dayTabs" aria-label="Tage wählen"></div>
-        <div class="divider"></div>
-        <div class="row">
-          <label class="small grow">Datum (Tag)<br><input type="text" id="dayDate" placeholder="optional (z.B. 02.01.2026)"></label>
-          <span class="small" id="dayUpdated">—</span>
+          <label class="small">Startdatum<br><input type="text" id="dateStart" placeholder="optional"></label>
+          <label class="small">Enddatum<br><input type="text" id="dateEnd" placeholder="optional"></label>
         </div>
         <div class="divider"></div>
         <div id="qContainer"></div>
@@ -1922,175 +1858,70 @@ if (typeof renderWeek !== "function"){
 
     const cSide = document.createElement("section");
     cSide.className = "card";
+    const comp = computeCompletion(w);
+    cSide.innerHTML = `
+      <div class="hd">
+        <div>
+          <h2>Status</h2>
+          <p>Fortschritt und Aktionen.</p>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="kpi">
+          <div class="kpiItem"><div class="lab">Gefüllt</div><div class="val">${comp.filled}/${comp.total}</div><div class="sub">${comp.pct}%</div></div>
+          <div class="kpiItem"><div class="lab">Letztes Update</div><div class="val">${w.updatedAt ? new Date(w.updatedAt).toLocaleDateString() : "—"}</div><div class="sub">localStorage</div></div>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <button class="btn" type="button" id="btnToHome">Zur Übersicht</button>
+          <button class="btn" type="button" id="btnToDash">Auswertung</button>
+        </div>
+        <div class="divider"></div>
+        <button class="btn danger" type="button" id="btnResetAll">Reset alles</button>
+      </div>
+    `;
 
     wrap.appendChild(cForm);
     wrap.appendChild(cSide);
 
-    // week meta
     const ds = cForm.querySelector("#dateStart");
     const de = cForm.querySelector("#dateEnd");
     ds.value = w.dateStart || "";
     de.value = w.dateEnd || "";
-    const saveWeekMeta = () => {
+    const saveMeta = () => {
       w.dateStart = ds.value.trim();
       w.dateEnd = de.value.trim();
       w.updatedAt = nowISO();
       debouncedSaveState();
-      refreshSide();
     };
-    ds.addEventListener("input", saveWeekMeta);
-    de.addEventListener("input", saveWeekMeta);
+    ds.addEventListener("input", saveMeta);
+    de.addEventListener("input", saveMeta);
 
-    // day tabs
-    const tabWrap = cForm.querySelector("#dayTabs");
-    const dayBtns = [];
-    for (let d=1; d<=7; d++){
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "tab" + (d===activeDay ? " active" : "");
-      b.textContent = `Tag ${d}`;
-      b.addEventListener("click", () => {
-        activeDay = d;
-        for (const bb of dayBtns) bb.classList.remove("active");
-        b.classList.add("active");
-        renderDay();
-      });
-      dayBtns.push(b);
-      tabWrap.appendChild(b);
-    }
-
-    // render day form
-    function renderDay(){
-      const day = w.days[activeDay-1];
-      const dayDate = cForm.querySelector("#dayDate");
-      const dayUpdated = cForm.querySelector("#dayUpdated");
-      dayDate.value = day.date || "";
-      dayUpdated.textContent = day.updatedAt ? `Letztes Update: ${new Date(day.updatedAt).toLocaleString()}` : "Noch kein Eintrag";
-
-      dayDate.oninput = () => {
-        day.date = dayDate.value.trim();
-        day.updatedAt = nowISO();
-        w.updatedAt = nowISO();
-        debouncedSaveState();
-        refreshSide();
-      };
-
-      const qContainer = cForm.querySelector("#qContainer");
-      qContainer.innerHTML = "";
-
-      const sections = Array.from(new Set(QUESTIONNAIRE.map(q => q.section)));
-      for (const sec of sections){
-        const secQs = QUESTIONNAIRE.filter(q => q.section === sec);
-        const secWrap = document.createElement("div");
-        secWrap.innerHTML = `
-          <div class="sectionTitle">
-            <h3>${sec}</h3>
-            <small>${secQs.length} Fragen</small>
-          </div>
-        `;
-        for (const q of secQs){
-          const el = renderQuestion(q, day, w);
-          secWrap.appendChild(el);
-        }
-        qContainer.appendChild(secWrap);
-        qContainer.appendChild(document.createElement("div")).className = "divider";
-      }
-
-      refreshSide();
-    }
-
-    // Side panel: weekly summary (sum/avg) and navigation
-    function collectWeekValues(q){
-      const vals = [];
-      for (let d=1; d<=7; d++){
-        const day = w.days[d-1];
-        const v = day?.answers ? day.answers[q.id] : undefined;
-        if (v === undefined || v === null || v === "") vals.push(null);
-        else vals.push(Number(v));
-      }
-      return vals;
-    }
-    function agg(vals, q){
-      const isNumeric = q.type === "slider";
-      if (!isNumeric) return { sum:null, avg:null, filled:0 };
-      const a = vals.filter(v => Number.isFinite(v));
-      const sum = a.reduce((s,v)=>s+v,0);
-      const avg = a.length ? sum / a.length : null;
-      return { sum, avg, filled: a.length };
-    }
-    function refreshSide(){
-      const comp = computeCompletion(w);
-      const day = w.days[activeDay-1];
-      const dayComp = (()=>{
-        let total=0, filled=0;
-        const ans = day.answers || {};
-        for (const q of QUESTIONNAIRE){
-          if (q.type === "text" && q.id === "notes_week") continue;
-          total++;
-          const v = ans[q.id];
-          if (v !== null && v !== undefined && v !== "") filled++;
-        }
-        const pct = total ? Math.round((filled/total)*100) : 0;
-        return { total, filled, pct };
-      })();
-
-      const numericQs = QUESTIONNAIRE.filter(q => q.type === "slider");
-      const rows = [];
-      rows.push(`<div class="kpi">`);
-      rows.push(`<div class="kpiItem"><div class="lab">Tag ${activeDay} gefüllt</div><div class="val">${dayComp.filled}/${dayComp.total}</div><div class="sub">${dayComp.pct}%</div></div>`);
-      rows.push(`<div class="kpiItem"><div class="lab">Woche gefüllt</div><div class="val">${comp.filled}/${comp.total}</div><div class="sub">${comp.pct}%</div></div>`);
-      rows.push(`</div>`);
-      rows.push(`<div class="divider"></div>`);
-
-      rows.push(`<div class="row">`);
-      rows.push(`<button class="btn" type="button" id="btnToHome">Zur Übersicht</button>`);
-      rows.push(`<button class="btn" type="button" id="btnToDash">Auswertung</button>`);
-      rows.push(`</div>`);
-
-      rows.push(`<div class="divider"></div>`);
-      rows.push(`<div class="small"><b>Wochensummen / Ø (nur numerische Skalen)</b></div>`);
-      rows.push(`<div class="mappingPreview" style="margin-top:8px;">`);
-      rows.push(`<table><thead><tr><th>Metrik</th><th>Ø</th><th>Summe</th><th>Tage</th></tr></thead><tbody>`);
-      const fmt = (v)=> (v===null || v===undefined || !Number.isFinite(v)) ? "—" : (Math.round(v*100)/100).toString();
-      for (const q of numericQs){
-        const vals = collectWeekValues(q);
-        const a = agg(vals, q);
-        rows.push(`<tr><td>${q.label}</td><td>${fmt(a.avg)}</td><td>${fmt(a.sum)}</td><td>${a.filled}/7</td></tr>`);
-      }
-      rows.push(`</tbody></table></div>`);
-
-      rows.push(`<div class="divider"></div>`);
-      rows.push(`<button class="btn danger" type="button" id="btnResetAll">Reset alles</button>`);
-
-      cSide.innerHTML = `
-        <div class="hd">
-          <div>
-            <h2>Status & Summen</h2>
-            <p>Wöchentliche Aggregation basiert auf den 7 Tages-Einträgen.</p>
-          </div>
+    const qContainer = cForm.querySelector("#qContainer");
+    const sections = Array.from(new Set(QUESTIONNAIRE.map(q => q.section)));
+    for (const sec of sections){
+      const secQs = QUESTIONNAIRE.filter(q => q.section === sec);
+      const secWrap = document.createElement("div");
+      secWrap.innerHTML = `
+        <div class="sectionTitle">
+          <h3>${sec}</h3>
+          <small>${secQs.length} Fragen</small>
         </div>
-        <div class="bd">${rows.join("")}</div>
       `;
-
-      cSide.querySelector("#btnToHome").addEventListener("click", () => navTo("home"));
-      cSide.querySelector("#btnToDash").addEventListener("click", () => navTo("dashboard"));
-      cSide.querySelector("#btnResetAll").addEventListener("click", () => {
-        if (!confirm("Wirklich ALLES löschen?") ) return;
-        state = defaultState();
-        saveState();
-        navTo("home");
-        toast("Reset", "Alle Daten wurden gelöscht.");
-      });
+      for (const q of secQs){
+        const el = renderQuestion(q, w);
+        secWrap.appendChild(el);
+      }
+      qContainer.appendChild(secWrap);
+      qContainer.appendChild(document.createElement("div")).className = "divider";
     }
 
-    // Week delete
+    cSide.querySelector("#btnToHome").addEventListener("click", () => navTo("home"));
+    cSide.querySelector("#btnToDash").addEventListener("click", () => navTo("dashboard"));
+
     cForm.querySelector("#btnWeekDelete").addEventListener("click", () => {
       if (!confirm(`Woche ${weekIndex} wirklich löschen?`)) return;
-      for (const day of w.days){
-        day.answers = {};
-        day.date = "";
-        day.updatedAt = "";
-      }
+      w.answers = {};
       w.dateStart = "";
       w.dateEnd = "";
       w.updatedAt = nowISO();
@@ -2099,7 +1930,14 @@ if (typeof renderWeek !== "function"){
       toast("Woche gelöscht", `Woche ${weekIndex} wurde geleert.`);
     });
 
-    // Bottom bar wiring
+    cSide.querySelector("#btnResetAll").addEventListener("click", () => {
+      if (!confirm("Wirklich ALLES löschen?") ) return;
+      state = defaultState();
+      saveState();
+      navTo("home");
+      toast("Reset", "Alle Daten wurden gelöscht.");
+    });
+
     const bbBack = document.getElementById("bbBack");
     const bbSave = document.getElementById("bbSave");
     const bbDup = document.getElementById("bbDuplicate");
@@ -2108,26 +1946,18 @@ if (typeof renderWeek !== "function"){
     if (bbDup) bbDup.onclick = () => {
       if (weekIndex <= 1) return toast("Duplizieren", "Keine Vorwoche vorhanden.");
       const prev = state.weeks[weekIndex-2];
-      if (!Array.isArray(prev.days) || prev.days.length !== 7) return toast("Duplizieren", "Vorwoche hat keine Tagesdaten.");
-      for (let d=1; d<=7; d++){
-        w.days[d-1].answers = structuredClone(prev.days[d-1].answers || {});
-        w.days[d-1].date = w.days[d-1].date || prev.days[d-1].date || "";
-        w.days[d-1].updatedAt = nowISO();
-      }
+      w.answers = structuredClone(prev.answers || {});
       w.updatedAt = nowISO();
       saveState();
-      renderDay();
-      toast("Dupliziert", `Alle 7 Tage aus Woche ${weekIndex-1} übernommen.`);
+      render();
+      toast("Dupliziert", `Werte aus Woche ${weekIndex-1} übernommen.`);
     };
 
-    // Initial render
-    renderDay();
-
     return wrap;
-  };
+  }
 
-  renderQuestion = function renderQuestion(q, day, week){
-    const answers = day.answers || (day.answers = {});
+  renderQuestion = function renderQuestion(q, week){
+    const answers = week.answers || (week.answers = {});
     const current = answers[q.id];
 
     const wrap = document.createElement("div");
@@ -2161,7 +1991,6 @@ if (typeof renderWeek !== "function"){
         valPill.textContent = String(v);
         valPill.classList.remove("empty");
       }
-      day.updatedAt = nowISO();
       week.updatedAt = nowISO();
       debouncedSaveState();
     };
@@ -2199,7 +2028,7 @@ if (typeof renderWeek !== "function"){
         const id = `r_${q.id}_${o.value}`;
         const lab = document.createElement("label");
         lab.className = "opt";
-        lab.innerHTML = `<input type="radio" name="${q.id}_d${day.dayIndex}" id="${id}" value="${String(o.value)}"><span>${o.label}</span>`;
+        lab.innerHTML = `<input type="radio" name="${q.id}" id="${id}" value="${String(o.value)}"><span>${o.label}</span>`;
         const inp = lab.querySelector("input");
         if (String(current) === String(o.value)) inp.checked = true;
         inp.addEventListener("change", () => setVal(coerceValue(q, inp.value)));
@@ -2212,7 +2041,6 @@ if (typeof renderWeek !== "function"){
   };
 }
 
-
 if (typeof renderDashboard !== "function"){
   renderDashboard = function renderDashboard(){
     const wrap = document.createElement("div");
@@ -2224,7 +2052,7 @@ if (typeof renderDashboard !== "function"){
       <div class="hd">
         <div>
           <h2>Auswertung</h2>
-          <p>Wöchentliche Trends (Ø über 7 Tage) und Monatssummen/Ø (je 4 Wochen).</p>
+          <p>Trends über 12 Wochen. Wähle Metriken und vergleiche sie.</p>
         </div>
         <div class="row">
           <button class="btn" type="button" id="btnHome">Wochen</button>
@@ -2236,9 +2064,6 @@ if (typeof renderDashboard !== "function"){
         <div class="row" id="metricPicker"></div>
         <div class="divider"></div>
         <div class="chartWrap"><div class="chartScroller"><canvas id="trendChart"></canvas></div></div>
-        <div class="divider"></div>
-        <div class="small"><b>Monatsübersicht (4 Wochen pro Monat)</b></div>
-        <div class="mappingPreview" id="monthTable" style="margin-top:8px;"></div>
       </div>
     `;
 
@@ -2247,7 +2072,7 @@ if (typeof renderDashboard !== "function"){
     side.innerHTML = `
       <div class="hd">
         <div>
-          <h2>Aggregationen (Wochen)</h2>
+          <h2>Aggregationen</h2>
           <p>Min/Max/Ø je Metrik + Ø letzte 4 Wochen.</p>
         </div>
       </div>
@@ -2277,31 +2102,13 @@ if (typeof renderDashboard !== "function"){
       picker.appendChild(b);
     }
 
-    function weekValues(w, qid){
-      const vals = [];
-      if (!w.days || !Array.isArray(w.days)) return vals;
-      for (let d=0; d<7; d++){
-        const day = w.days[d];
-        const v = day?.answers ? day.answers[qid] : undefined;
-        if (v === undefined || v === null || v === "") continue;
-        const n = Number(v);
-        if (Number.isFinite(n)) vals.push(n);
-      }
-      return vals;
-    }
-
-    function weekAvg(w, qid){
-      const a = weekValues(w, qid);
-      if (!a.length) return null;
-      return a.reduce((s,v)=>s+v,0) / a.length;
-    }
-
     function getSeries(qid){
       const q = numericQs.find(x => x.id === qid);
       const vals = [];
       for (let i=1;i<=TOTAL_WEEKS;i++){
         const w = state.weeks[i-1];
-        vals.push(weekAvg(w, qid));
+        const v = w.answers ? w.answers[qid] : undefined;
+        vals.push(v === undefined ? null : Number(v));
       }
       return { q, vals };
     }
@@ -2315,29 +2122,6 @@ if (typeof renderDashboard !== "function"){
       const last = vals.slice(-4).filter(v => Number.isFinite(v));
       const last4 = last.length ? (last.reduce((s,v)=>s+v,0)/last.length) : null;
       return { min, max, avg, last4 };
-    }
-
-    function fmt(v){
-      return (v===null||v===undefined||!Number.isFinite(v)) ? "—" : (Math.round(v*100)/100).toString();
-    }
-
-    function monthAgg(qid){
-      // months: weeks 1-4, 5-8, 9-12
-      const months = [
-        { name:"Monat 1 (W1–W4)", weeks:[1,2,3,4] },
-        { name:"Monat 2 (W5–W8)", weeks:[5,6,7,8] },
-        { name:"Monat 3 (W9–W12)", weeks:[9,10,11,12] }
-      ];
-      return months.map(m => {
-        const vals = [];
-        for (const wi of m.weeks){
-          const w = state.weeks[wi-1];
-          vals.push(...weekValues(w, qid));
-        }
-        const sum = vals.reduce((s,v)=>s+v,0);
-        const avg = vals.length ? sum/vals.length : null;
-        return { month:m.name, sum: vals.length? sum:null, avg, days: vals.length };
-      });
     }
 
     function draw(){
@@ -2357,7 +2141,7 @@ if (typeof renderDashboard !== "function"){
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            tooltip: { callbacks: { title: (items) => items?.[0] ? `Woche ${items[0].dataIndex+1} (Ø über Tage)` : "" } },
+            tooltip: { callbacks: { title: (items) => items?.[0] ? `Woche ${items[0].dataIndex+1}` : "" } },
             legend: { position: "top" }
           },
           scales: { y: { beginAtZero: false } }
@@ -2369,24 +2153,11 @@ if (typeof renderDashboard !== "function"){
       for (const q of numericQs){
         const s = getSeries(q.id);
         const st = stats(s.vals);
+        const fmt = (v) => (v===null||v===undefined||!Number.isFinite(v)) ? "—" : (Math.round(v*100)/100).toString();
         rows.push(`<tr><td>${q.label}</td><td>${fmt(st.min)}</td><td>${fmt(st.max)}</td><td>${fmt(st.avg)}</td><td>${fmt(st.last4)}</td></tr>`);
       }
       rows.push(`</tbody></table>`);
       side.querySelector("#aggTable").innerHTML = rows.join("");
-
-      // month table based on selected first metric (or first available)
-      const first = selected.values().next().value || (numericQs[0] ? numericQs[0].id : null);
-      if (!first){ c.querySelector("#monthTable").innerHTML = "—"; return; }
-      const q = numericQs.find(x=>x.id===first);
-      const m = monthAgg(first);
-      const mt = [];
-      mt.push(`<div class="small">Basis-Metrik: <b>${q.label}</b> (Summe/Ø über alle Tageswerte im Monat)</div>`);
-      mt.push(`<table style="margin-top:8px;"><thead><tr><th>Monat</th><th>Summe</th><th>Ø</th><th>Tage</th></tr></thead><tbody>`);
-      for (const mm of m){
-        mt.push(`<tr><td>${mm.month}</td><td>${fmt(mm.sum)}</td><td>${fmt(mm.avg)}</td><td>${mm.days}</td></tr>`);
-      }
-      mt.push(`</tbody></table>`);
-      c.querySelector("#monthTable").innerHTML = mt.join("");
     }
 
     const waitChart = () => { if (window.Chart) draw(); else setTimeout(waitChart, 60); };
@@ -2395,7 +2166,6 @@ if (typeof renderDashboard !== "function"){
     return wrap;
   };
 }
-
 
 if (typeof renderDataTools !== "function"){
   renderDataTools = function renderDataTools(){
