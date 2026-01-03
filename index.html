@@ -6,8 +6,7 @@ How to run:
   und dann in der App “Service Worker exportieren” nutzen (sw.js herunterladen und im gleichen Ordner ablegen).
 - Hinweis: Ohne Service Worker sind CDN-Ressourcen (Chart.js) ggf. nicht offline verfügbar.
 -->
- <!-- Version: v1.0.1: Fix Daily with Radio buttons -->  
-<!-- Version: v0.9.9: Daily entries + weekly/monthly aggregates -->
+  <!-- Version: v1.0.2: Habit (Ja/Nein) Auswertung + fixes -->
   <!-- Version: v0.9.7 -->
 
 <!doctype html>
@@ -737,7 +736,7 @@ How to run:
           </svg>
         </div>
         <div class="titlewrap">
-          <p class="apptitle">DarmKur Tagebuch <span class="versionBadge" id="versionBadge">v0.9.9</span></p>
+          <p class="apptitle">DarmKur Tagebuch <span class="versionBadge" id="versionBadge">v0.9.10</span></p>
           <p class="subtitle" id="subtitle">12 Wochen · lokal gespeichert · Charts mit Chart.js</p>
         </div>
       </div>
@@ -830,7 +829,7 @@ How to run:
      *    - Freitext: “Was mir sonst noch aufgefallen ist” (sichtbar als Überschrift)
      *********************************************************************/
     const STORAGE_KEY = "darmkur_tagebuch_vault";
-    const APP_VERSION = "v0.9.9";
+    const APP_VERSION = "v1.0.2";
     const STORAGE_VERSION = 1;
     const TOTAL_WEEKS = 12;
 
@@ -917,10 +916,13 @@ How to run:
         id: "hab_wasser",
         section: "Gewohnheiten-Checkliste",
         label: "Morgens 1 Glas Wasser mit Salz & Zitrone oder Apfelessig",
-        helpText: "Im Buch: täglich ankreuzen. Hier: Wie viele Tage in dieser Woche umgesetzt?",
+        helpText: "Im Buch: täglich ankreuzen. Hier: pro Tag Ja/Nein.",
         type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_protein",
@@ -2295,6 +2297,12 @@ if (typeof renderDashboard !== "function"){
         <div class="divider"></div>
         <div class="chartWrap"><div class="chartScroller"><canvas id="trendChart"></canvas></div></div>
         <div class="divider"></div>
+        <div class="small"><b>Gewohnheiten (Ja/Nein)</b></div>
+        <div class="row" id="habitPicker"></div>
+        <div class="chartWrap" style="margin-top:10px;"><div class="chartScroller"><canvas id="habitChart"></canvas></div></div>
+        <div class="divider"></div>
+        <div class="mappingPreview" id="habitTable" style="margin-top:8px;"></div>
+        <div class="divider"></div>
         <div class="small"><b>Monatsübersicht (4 Wochen pro Monat)</b></div>
         <div class="mappingPreview" id="monthTable" style="margin-top:8px;"></div>
       </div>
@@ -2333,6 +2341,73 @@ if (typeof renderDashboard !== "function"){
         draw();
       });
       picker.appendChild(b);
+    }
+
+    // ===== Gewohnheiten (Ja/Nein) =====
+    const habitQs = QUESTIONNAIRE.filter(q => (
+      q.section === "Gewohnheiten-Checkliste" &&
+      (q.type === "radio" || q.type === "select") &&
+      Array.isArray(q.options) &&
+      q.options.some(o => String(o.value) === "yes") &&
+      q.options.some(o => String(o.value) === "no")
+    ));
+    const habitPicker = c.querySelector("#habitPicker");
+    const selectedHabits = new Set(habitQs.slice(0,4).map(q => q.id));
+
+    if (habitPicker){
+      if (!habitQs.length){
+        habitPicker.innerHTML = `<span class="small">Keine Ja/Nein-Gewohnheiten gefunden.</span>`;
+      } else {
+        for (const q of habitQs){
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "tab" + (selectedHabits.has(q.id) ? " active" : "");
+          b.textContent = q.label;
+          b.addEventListener("click", () => {
+            if (selectedHabits.has(q.id)) selectedHabits.delete(q.id); else selectedHabits.add(q.id);
+            b.classList.toggle("active", selectedHabits.has(q.id));
+            draw();
+          });
+          habitPicker.appendChild(b);
+        }
+      }
+    }
+
+    function weekHabitRate(w, qid){
+      let yes = 0, no = 0;
+      if (!w.days || !Array.isArray(w.days)) return null;
+      for (let d=0; d<7; d++){
+        const v = w.days[d]?.answers ? w.days[d].answers[qid] : undefined;
+        if (v === "yes") yes++;
+        else if (v === "no") no++;
+      }
+      const denom = yes + no;
+      return denom ? (yes / denom) * 100 : null;
+    }
+
+    function habitOverall(qid){
+      let yes = 0, no = 0;
+      for (let wi=1; wi<=TOTAL_WEEKS; wi++){
+        const w = state.weeks[wi-1];
+        if (!w.days || !Array.isArray(w.days)) continue;
+        for (let d=0; d<7; d++){
+          const v = w.days[d]?.answers ? w.days[d].answers[qid] : undefined;
+          if (v === "yes") yes++;
+          else if (v === "no") no++;
+        }
+      }
+      const denom = yes + no;
+      return { yes, no, denom, pctYes: denom ? (yes/denom)*100 : null };
+    }
+
+    function getHabitSeries(qid){
+      const q = habitQs.find(x => x.id === qid);
+      const vals = [];
+      for (let i=1;i<=TOTAL_WEEKS;i++){
+        const w = state.weeks[i-1];
+        vals.push(weekHabitRate(w, qid));
+      }
+      return { q, vals };
     }
 
     function weekValues(w, qid){
@@ -2421,6 +2496,63 @@ if (typeof renderDashboard !== "function"){
           scales: { y: { beginAtZero: false } }
         }
       });
+
+
+      // ===== Gewohnheiten (Ja/Nein): % Ja pro Woche =====
+      const hCtx = c.querySelector("#habitChart");
+      if (hCtx){
+        const hDs = [];
+        for (const id of selectedHabits){
+          const s = getHabitSeries(id);
+          if (!s.q) continue;
+          hDs.push({ label: s.q.label, data: s.vals, spanGaps: true, tension: 0.25 });
+        }
+
+        if (charts.habits) charts.habits.destroy();
+        charts.habits = new Chart(hCtx, {
+          type: "line",
+          data: { labels, datasets: hDs },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "top" },
+              tooltip: {
+                callbacks: {
+                  title: (items) => items?.[0] ? `Woche ${items[0].dataIndex+1} (% Ja über Tage)` : "",
+                  label: (ctx) => {
+                    const v = ctx.raw;
+                    return `${ctx.dataset.label}: ${fmt(v)}%`;
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { callback: (v) => `${v}%` }
+              }
+            }
+          }
+        });
+      }
+
+      const habitTable = c.querySelector("#habitTable");
+      if (habitTable){
+        if (!habitQs.length){
+          habitTable.innerHTML = "—";
+        } else {
+          const ht = [];
+          ht.push(`<table><thead><tr><th>Gewohnheit</th><th>% Ja (gesamt)</th><th>Ja</th><th>Nein</th><th>Tage erfasst</th></tr></thead><tbody>`);
+          for (const q of habitQs){
+            const o = habitOverall(q.id);
+            ht.push(`<tr><td>${q.label}</td><td>${fmt(o.pctYes)}%</td><td>${o.yes}</td><td>${o.no}</td><td>${o.denom}</td></tr>`);
+          }
+          ht.push(`</tbody></table>`);
+          habitTable.innerHTML = ht.join("");
+        }
+      }
 
       const rows = [];
       rows.push(`<table><thead><tr><th>Metrik</th><th>Min</th><th>Max</th><th>Ø</th><th>Ø letzte 4</th></tr></thead><tbody>`);
