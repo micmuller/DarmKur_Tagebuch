@@ -6,7 +6,8 @@ How to run:
   und dann in der App “Service Worker exportieren” nutzen (sw.js herunterladen und im gleichen Ordner ablegen).
 - Hinweis: Ohne Service Worker sind CDN-Ressourcen (Chart.js) ggf. nicht offline verfügbar.
 -->
-  <!-- Version: v0.9.9: Daily entries + weekly/monthly aggregates -->
+ <!-- Version: v1.0.1: Fix Daily with Radio buttons -->  
+<!-- Version: v0.9.9: Daily entries + weekly/monthly aggregates -->
   <!-- Version: v0.9.7 -->
 
 <!doctype html>
@@ -917,7 +918,7 @@ How to run:
         section: "Gewohnheiten-Checkliste",
         label: "Morgens 1 Glas Wasser mit Salz & Zitrone oder Apfelessig",
         helpText: "Im Buch: täglich ankreuzen. Hier: Wie viele Tage in dieser Woche umgesetzt?",
-        type: "slider",
+        type: "radio",
         required: false,
         scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
       },
@@ -926,99 +927,132 @@ How to run:
         section: "Gewohnheiten-Checkliste",
         label: "Proteinreiches Frühstück & Mittagessen",
         helpText: "Wie viele Tage in dieser Woche umgesetzt?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_fairment",
         section: "Gewohnheiten-Checkliste",
         label: "Einnahme Fairmentprodukte",
         helpText: "Wie viele Tage in dieser Woche umgesetzt?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_koffein",
         section: "Gewohnheiten-Checkliste",
         label: "Max. 1 Kaffee / 1 grüner Tee",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_keine_fertigprodukte",
         section: "Gewohnheiten-Checkliste",
         label: "Keine Fertigprodukte",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_keinzucker",
         section: "Gewohnheiten-Checkliste",
         label: "Kein Zucker, Softdrinks oder Süßstoffe",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_keine_margarine",
         section: "Gewohnheiten-Checkliste",
         label: "Keine Margarine und Saatenöle",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_keine_unfermilch",
         section: "Gewohnheiten-Checkliste",
         label: "Keine unfermentierten Milchprodukte",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_keine_wurst",
         section: "Gewohnheiten-Checkliste",
         label: "Keine Wurst oder Wurstwaren",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_keingluten",
         section: "Gewohnheiten-Checkliste",
         label: "Kein glutenhaltiges Getreide",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_keinalkohol",
         section: "Gewohnheiten-Checkliste",
         label: "Kein Alkohol",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
       {
         id: "hab_nichtessen_vor_schlaf",
         section: "Gewohnheiten-Checkliste",
         label: "Nichts essen ab 3 Std. vor dem Schlafengehen",
         helpText: "Wie viele Tage in dieser Woche eingehalten?",
-        type: "slider",
+        type: "radio",
         required: false,
-        scale: { min: 0, max: 7, step: 1, leftLabel: "0 Tage", rightLabel: "7 Tage", unit: "Tage/Woche" }
+        options: [
+          { value: "yes", label: "Ja" },
+          { value: "no",  label: "Nein" }
+        ]
       },
 
       // ===== Freitext (sichtbar als Überschrift unten) =====
@@ -1650,46 +1684,70 @@ function fillDemoData(){
   const next = structuredClone(state);
   const rnd = (a,b) => a + Math.random()*(b-a);
 
-  for (let i=1;i<=TOTAL_WEEKS;i++){
-    const w = next.weeks[i-1];
-    w.answers ||= {};
+  const yesNo = (pYes) => (Math.random() < pYes ? "yes" : "no");
 
-    // Symptom scores trend (improve slightly)
-    const base = 4.5 + (i-1)*0.35 + rnd(-0.6, 0.6);
-    const score10 = () => clamp(Math.round(base + rnd(-1.2, 1.2)), 1, 10);
+  for (let wi=1; wi<=TOTAL_WEEKS; wi++){
+    const w = next.weeks[wi-1];
 
-    w.answers.sym_beschwerdefreiheit = score10();
-    w.answers.sym_energielevel = score10();
-    w.answers.sym_stimmung = score10();
-    w.answers.sym_schlaf = score10();
-    w.answers.sym_entspannung = score10();
-    w.answers.sym_heisshungerfreiheit = score10();
-    w.answers.sym_bewegungslevel = score10();
+    // ensure days
+    if (!Array.isArray(w.days) || w.days.length !== 7){
+      w.days = [];
+      for (let d=1; d<=7; d++){
+        w.days.push({ dayIndex:d, date:"", updatedAt:"", answers:{} });
+      }
+    }
 
-    // Bristol 1-7: drift toward 3-4
-    const br = clamp(Math.round(4 + rnd(-1.5, 1.3) + (i>6? rnd(-0.5,0.5):0)), 1, 7);
-    w.answers.sym_stuhlgang = br;
+    // Week baseline trend (slightly improving over time)
+    const weekBase10 = 4.5 + (wi-1)*0.35 + rnd(-0.5, 0.5);
 
-    // Habits 0-7: generally increase
-    const h = (center) => clamp(Math.round(center + (i-1)*0.25 + rnd(-1.2, 1.2)), 0, 7);
-    w.answers.hab_wasser = h(4);
-    w.answers.hab_protein = h(3.5);
-    w.answers.hab_fairment = h(2.5);
-    w.answers.hab_koffein = h(4);
-    w.answers.hab_keine_fertigprodukte = h(3);
-    w.answers.hab_keinzucker = h(3.2);
-    w.answers.hab_keine_margarine = h(3);
-    w.answers.hab_keine_unfermilch = h(2.8);
-    w.answers.hab_keine_wurst = h(3.2);
-    w.answers.hab_keingluten = h(3.2);
-    w.answers.hab_keinalkohol = h(4.2);
-    w.answers.hab_nichtessen_vor_schlaf = h(3.6);
+    // habits: probability increases slightly over weeks
+    const pHabit = clamp(0.35 + (wi-1)*0.04 + rnd(-0.05, 0.05), 0.05, 0.95);
 
-    w.answers.notes_week = (i % 3 === 0)
-      ? "Stressige Woche, aber Ernährung weitgehend eingehalten."
-      : (i % 3 === 1)
-        ? "Gute Woche: mehr Bewegung, Schlaf OK."
-        : "Leichte Abweichung am Wochenende; beobachte Heißhunger.";
+    for (let di=1; di<=7; di++){
+      const day = w.days[di-1];
+      day.answers ||= {};
+
+      // daily noise
+      const noise = rnd(-1.1, 1.1);
+      const score10 = (shift=0) => clamp(Math.round(weekBase10 + shift + noise + rnd(-0.8, 0.8)), 1, 10);
+
+      // Symptomtagebuch (daily)
+      day.answers.sym_beschwerdefreiheit   = score10( 0.2);
+      day.answers.sym_energielevel         = score10( 0.1);
+      day.answers.sym_stimmung             = score10( 0.0);
+      day.answers.sym_schlaf               = score10(-0.2);
+      day.answers.sym_entspannung          = score10(-0.1);
+      day.answers.sym_heisshungerfreiheit  = score10( 0.0);
+      day.answers.sym_bewegungslevel       = score10( 0.1);
+
+      // Bristol 1-7, drift towards 3-4
+      const br = clamp(Math.round(4 + rnd(-1.4, 1.2) + (wi>6 ? rnd(-0.3,0.3) : 0)), 1, 7);
+      day.answers.sym_stuhlgang = br;
+
+      // Gewohnheiten (Yes/No)
+      day.answers.hab_wasser               = yesNo(pHabit);
+      day.answers.hab_protein              = yesNo(clamp(pHabit - 0.05, 0.05, 0.95));
+      day.answers.hab_fairment             = yesNo(clamp(pHabit - 0.15, 0.05, 0.95));
+      day.answers.hab_koffein              = yesNo(clamp(pHabit + 0.10, 0.05, 0.95));
+      day.answers.hab_keine_fertigprodukte = yesNo(clamp(pHabit - 0.05, 0.05, 0.95));
+      day.answers.hab_keinzucker           = yesNo(clamp(pHabit - 0.10, 0.05, 0.95));
+      day.answers.hab_keine_margarine      = yesNo(clamp(pHabit - 0.10, 0.05, 0.95));
+      day.answers.hab_keine_unfermilch     = yesNo(clamp(pHabit - 0.20, 0.05, 0.95));
+      day.answers.hab_keine_wurst          = yesNo(clamp(pHabit - 0.10, 0.05, 0.95));
+      day.answers.hab_keingluten           = yesNo(clamp(pHabit - 0.10, 0.05, 0.95));
+      day.answers.hab_keinalkohol          = yesNo(clamp(pHabit + 0.15, 0.05, 0.95));
+      day.answers.hab_nichtessen_vor_schlaf= yesNo(clamp(pHabit - 0.05, 0.05, 0.95));
+
+      // Notes (optional, not every day)
+      const pick = (wi + di) % 5;
+      day.answers.notes_week = (pick === 0)
+        ? "Heute war es stressig, Beobachtung: Schlaf etwas schlechter."
+        : (pick === 2)
+          ? "Guter Tag: Bewegung und Ernährung gut."
+          : "";
+
+      day.updatedAt = nowISO();
+    }
 
     w.updatedAt = nowISO();
   }
@@ -1698,7 +1756,7 @@ function fillDemoData(){
   state = next;
   saveState();
   navTo("dashboard");
-  toast("Demo-Daten erstellt", "12 Wochen wurden mit Beispielwerten gefüllt.");
+  toast("Demo-Daten erstellt", "Alle 12 Wochen × 7 Tage wurden mit Beispielwerten gefüllt.");
 }
 
 /*********************************************************************
@@ -2180,7 +2238,7 @@ if (typeof renderWeek !== "function"){
       `;
       const input = body.querySelector("input");
       input.addEventListener("input", () => setVal(coerceValue(q, input.value)));
-      if (valText(current)==='—') setVal(coerceValue(q, v0));
+     
     } else if (q.type === "text"){
       body.innerHTML = `<textarea aria-label="${q.label}" placeholder="optional">${current ? String(current) : ""}</textarea>`;
       const ta = body.querySelector("textarea");
